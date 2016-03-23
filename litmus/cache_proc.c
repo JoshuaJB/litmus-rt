@@ -804,6 +804,11 @@ static struct ctl_table cache_table[] =
 		.proc_handler	= do_perf_test_proc_handler,
 	},
 	{
+		.procname	= "setup_flusher",
+		.mode		= 0644,
+		.proc_handler	= setup_flusher_proc_handler,
+	},
+	{
 		.procname	= "lockdown_reg_0",
 		.mode		= 0644,
 		.proc_handler	= lockdown_reg_handler,
@@ -991,10 +996,10 @@ int setup_flusher_array(void)
 			int node;
 			switch (color) {
 				case 0:
-					node = 32;
+					node = 48;
 					break;
 				case 1:
-					node = 33;
+					node = 49;
 					break;
 				case 2:
 					node = 50;
@@ -1191,6 +1196,24 @@ int do_perf_test_proc_handler(struct ctl_table *table, int write,
 		ret = perf_test();
 	}
 
+	return ret;
+}
+
+int setup_flusher_proc_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = -EINVAL;
+
+	if (write && flusher_pages == NULL) {
+		ret = setup_flusher_array();
+		printk(KERN_INFO "setup flusher return: %d\n", ret);
+	
+	}
+	else if (flusher_pages) {
+		printk(KERN_INFO "flusher_pages is already set!\n");
+		ret = 0;
+	}
+	
 	return ret;
 }
 
