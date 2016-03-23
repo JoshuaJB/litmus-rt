@@ -410,6 +410,7 @@
 		CALL(sys_release_ts)
 		CALL(sys_null_call)
 /* 400 */	CALL(sys_get_current_budget)
+		CALL(sys_test_call)
 
 
 #ifndef syscalls_counted

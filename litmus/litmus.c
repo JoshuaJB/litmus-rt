@@ -31,6 +31,8 @@
 #include <trace/events/litmus.h>
 #endif
 
+extern void l2c310_flush_all(void);
+
 /* Number of RT tasks that exist in the system */
 atomic_t rt_task_count 		= ATOMIC_INIT(0);
 
@@ -311,6 +313,43 @@ asmlinkage long sys_null_call(cycles_t __user *ts)
 		ret = put_user(now, ts);
 	}
 
+	return ret;
+}
+
+/* sys_test_call() is a test system call for developing */
+asmlinkage long sys_test_call(unsigned int param)
+{
+	long ret = 0;
+	unsigned long flags;
+	struct vm_area_struct *vma_itr = NULL;
+	
+	TRACE_CUR("test_call param = %d\n", param);
+	
+	down_read(&current->mm->mmap_sem);
+	vma_itr = current->mm->mmap;
+	while (vma_itr != NULL) {
+		printk(KERN_INFO "vm_start : %lx\n", vma_itr->vm_start);
+		printk(KERN_INFO "vm_end   : %lx\n", vma_itr->vm_end);
+		printk(KERN_INFO "vm_flags : %lx\n", vma_itr->vm_flags);
+		printk(KERN_INFO "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
+		printk(KERN_INFO "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
+		if (vma_itr->vm_file) {
+			struct file *fp = vma_itr->vm_file;
+			unsigned long fcount = atomic_long_read(&(fp->f_count));
+			printk(KERN_INFO "f_count : %ld\n", fcount);
+			if (fcount > 1) {
+				vma_itr->vm_page_prot = pgprot_noncached(vma_itr->vm_page_prot);
+			}
+		}
+		printk(KERN_INFO "vm_prot2 : %x\n", pgprot_val(vma_itr->vm_page_prot));
+		vma_itr = vma_itr->vm_next;
+	}
+	up_read(&current->mm->mmap_sem);
+	
+	local_irq_save(flags);
+	l2c310_flush_all();
+	local_irq_restore(flags);
+	
 	return ret;
 }
 

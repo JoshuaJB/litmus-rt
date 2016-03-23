@@ -31,5 +31,7 @@ __SYSCALL(__NR_release_ts, sys_release_ts)
 __SYSCALL(__NR_null_call, sys_null_call)
 #define __NR_get_current_budget			__LSC(12)
 __SYSCALL(____NR_get_current_budget, sys_get_current_budget)
+#define __NR_test_call				__LSC(13)
+__SYSCALL(__NR_test_call, sys_test_call)
 
-#define NR_litmus_syscalls 13
+#define NR_litmus_syscalls 14

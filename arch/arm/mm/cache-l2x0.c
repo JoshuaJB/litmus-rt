@@ -33,6 +33,8 @@
 #include "cache-tauros3.h"
 #include "cache-aurora-l2.h"
 
+#include <litmus/cache_proc.h>
+
 struct l2c_init_data {
 	const char *type;
 	unsigned way_size_0;
@@ -726,7 +728,6 @@ static void __init l2c310_fixup(void __iomem *base, u32 cache_id,
 
 	if (n) {
 		unsigned i;
-
 		pr_info("L2C-310 errat%s", n > 1 ? "a" : "um");
 		for (i = 0; i < n; i++)
 			pr_cont(" %s", errata[i]);
@@ -772,6 +773,11 @@ static const struct l2c_init_data l2c310_init_fns __initconst = {
 		.sync = l2c210_sync,
 		.resume = l2c310_resume,
 	},
+};
+
+void l2c310_flush_all(void)
+{
+	l2c210_flush_all();
 };
 
 static int __init __l2c_init(const struct l2c_init_data *data,
@@ -876,6 +882,8 @@ static int __init __l2c_init(const struct l2c_init_data *data,
 	pr_info("%s: CACHE_ID 0x%08x, AUX_CTRL 0x%08x\n",
 		data->type, cache_id, aux);
 
+	litmus_setup_lockdown(l2x0_base, cache_id);
+	
 	return 0;
 }
 
