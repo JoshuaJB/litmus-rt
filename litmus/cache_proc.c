@@ -11,6 +11,7 @@
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
 #include <litmus/cache_proc.h>
+#include <litmus/mc2_common.h>
 
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/cacheflush.h>
@@ -144,6 +145,8 @@ static int l1_prefetch_proc;
 static int l2_prefetch_hint_proc;
 static int l2_double_linefill_proc;
 static int l2_data_prefetch_proc;
+static int os_isolation;
+static int use_part;
 
 u32 lockdown_reg[9] = {
 	0x00000000,
@@ -168,6 +171,7 @@ int lock_all;
 int nr_lockregs;
 static raw_spinlock_t cache_lock;
 static raw_spinlock_t prefetch_lock;
+static void ***flusher_pages = NULL;
 
 extern void l2c310_flush_all(void);
 
@@ -379,6 +383,79 @@ void cache_lockdown(u32 lock_val, int cpu)
 	//raw_spin_unlock_irqrestore(&cache_lock, flags);
 }
 
+void do_partition(enum crit_level lv, int cpu)
+{
+	u32 regs;
+	unsigned long flags;
+	
+	if (lock_all || !use_part)
+		return;
+	raw_spin_lock_irqsave(&cache_lock, flags);
+	switch(lv) {
+		case CRIT_LEVEL_A:
+			regs = ~way_partitions[cpu*2];
+			regs &= 0x0000ffff;
+			break;
+		case CRIT_LEVEL_B:
+			regs = ~way_partitions[cpu*2+1];
+			regs &= 0x0000ffff;
+			break;
+		case CRIT_LEVEL_C:
+		case NUM_CRIT_LEVELS:
+			regs = ~way_partitions[8];
+			regs &= 0x0000ffff;
+			break;
+		default:
+			BUG();
+
+	}
+	barrier();
+	cache_lockdown(regs, cpu);
+	barrier();
+
+	raw_spin_unlock_irqrestore(&cache_lock, flags);
+	
+	flush_cache(0);
+}
+
+int use_part_proc_handler(struct ctl_table *table, int write, void __user *buffer,
+		size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+	
+	mutex_lock(&lockdown_proc);
+
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret)
+		goto out;
+	
+
+	printk("USE_PART HANDLER = %d\n", use_part);
+
+out:
+	mutex_unlock(&lockdown_proc);
+	return ret;
+}
+
+int os_isolation_proc_handler(struct ctl_table *table, int write, void __user *buffer,
+		size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+	
+	mutex_lock(&lockdown_proc);
+	
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret)
+		goto out;
+	
+
+	printk("OS_ISOLATION HANDLER = %d\n", os_isolation);
+
+out:
+	mutex_unlock(&lockdown_proc);
+	return ret;
+}
+
 int lockdown_reg_handler(struct ctl_table *table, int write, void __user *buffer,
 		size_t *lenp, loff_t *ppos)
 {
@@ -427,6 +504,30 @@ int lockdown_global_handler(struct ctl_table *table, int write, void __user *buf
 out:
 	mutex_unlock(&lockdown_proc);
 	return ret;
+}
+
+void inline enter_irq_mode(void)
+{
+	int cpu = smp_processor_id();
+
+	if (os_isolation == 0)
+		return;	
+
+	prev_lockdown_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
+	prev_lockdown_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
+	
+	writel_relaxed(way_partitions[8], ld_i_reg(cpu));
+	writel_relaxed(way_partitions[8], ld_d_reg(cpu));
+}
+
+void inline exit_irq_mode(void)
+{
+	int cpu = smp_processor_id();
+
+	if (os_isolation == 0)
+		return;
+	writel_relaxed(prev_lockdown_i_reg[cpu], ld_i_reg(cpu));
+	writel_relaxed(prev_lockdown_d_reg[cpu], ld_d_reg(cpu));	
 }
 
 /* Operate on the Cortex-A9's ACTLR register */
@@ -684,6 +785,20 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(l2_data_prefetch_proc),
 	},
 	{
+		.procname	= "os_isolation",
+		.mode		= 0644,
+		.proc_handler	= os_isolation_proc_handler,
+		.data		= &os_isolation,
+		.maxlen		= sizeof(os_isolation),
+	},
+	{
+		.procname	= "use_part",
+		.mode		= 0644,
+		.proc_handler	= use_part_proc_handler,
+		.data		= &use_part,
+		.maxlen		= sizeof(use_part),
+	},
+	{
 		.procname	= "do_perf_test",
 		.mode		= 0644,
 		.proc_handler	= do_perf_test_proc_handler,
@@ -838,8 +953,146 @@ extern void v7_flush_kern_cache_all(void);
  */
 void color_flush_page(void *vaddr, size_t size)
 {
-	//v7_flush_kern_dcache_area(vaddr, size);
-	v7_flush_kern_cache_all();
+	v7_flush_kern_dcache_area(vaddr, size);
+	//v7_flush_kern_cache_all();
+}
+
+extern struct page* get_colored_page(unsigned long color);
+
+int setup_flusher_array(void)
+{
+	int color, way, ret = 0;
+	struct page *page;
+
+	if (flusher_pages != NULL)
+		goto out;
+
+	flusher_pages = (void***) kmalloc(MAX_NR_WAYS
+			* sizeof(*flusher_pages), GFP_KERNEL);
+	if (!flusher_pages) {
+		printk(KERN_WARNING "No memory for flusher array!\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	for (way = 0; way < MAX_NR_WAYS; way++) {
+		void **flusher_color_arr;
+		flusher_color_arr = (void**) kmalloc(sizeof(**flusher_pages)
+				* MAX_NR_COLORS, GFP_KERNEL);
+		if (!flusher_color_arr) {
+			printk(KERN_WARNING "No memory for flusher array!\n");
+			ret = -ENOMEM;
+			goto out_free;
+		}
+
+		flusher_pages[way] = flusher_color_arr;
+
+		for (color = 0; color < MAX_NR_COLORS; color++) {
+			int node;
+			switch (color) {
+				case 0:
+					node = 32;
+					break;
+				case 1:
+					node = 33;
+					break;
+				case 2:
+					node = 50;
+					break;
+				case 3:
+					node = 51;
+					break;
+				case 4:
+					node = 68;
+					break;
+				case 5:
+					node = 69;
+					break;
+				case 6:
+					node = 86;
+					break;
+				case 7:
+					node = 87;
+					break;
+				case 8:
+					node = 88;
+					break;
+				case 9:
+					node = 105;
+					break;
+				case 10:
+					node = 106;
+					break;
+				case 11:
+					node = 107;
+					break;
+				case 12:
+					node = 108;
+					break;					
+				case 13:
+					node = 125;
+					break;
+				case 14:
+					node = 126;
+					break;
+				case 15:
+					node = 127;
+					break;
+			}	
+			page = get_colored_page(node);
+			if (!page) {
+				printk(KERN_WARNING "no more colored pages\n");
+				ret = -EINVAL;
+				goto out_free;
+			}
+			flusher_pages[way][color] = page_address(page);
+			if (!flusher_pages[way][color]) {
+				printk(KERN_WARNING "bad page address\n");
+				ret = -EINVAL;
+				goto out_free;
+			}
+		}
+	}
+out:
+	return ret;
+out_free:
+	for (way = 0; way < MAX_NR_WAYS; way++) {
+		for (color = 0; color < MAX_NR_COLORS; color++) {
+			/* not bothering to try and give back colored pages */
+		}
+		kfree(flusher_pages[way]);
+	}
+	kfree(flusher_pages);
+	flusher_pages = NULL;
+	return ret;
+}
+
+void flush_cache(int all)
+{
+	int way, color, cpu;
+	unsigned long flags;
+	
+	raw_spin_lock_irqsave(&cache_lock, flags);
+	cpu = raw_smp_processor_id();
+	
+	prev_lbm_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
+	prev_lbm_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
+	for (way=0;way<MAX_NR_WAYS;way++) {
+		if (( (0x00000001 << way) & (prev_lbm_d_reg[cpu]) ) &&
+			!all)
+			continue;
+		for (color=0;color<MAX_NR_COLORS;color++) {
+			void *vaddr = flusher_pages[way][color];
+			u32 lvalue  = unlocked_way[way];
+			color_read_in_mem_lock(lvalue, LOCK_ALL,
+					       vaddr, vaddr + PAGE_SIZE);
+		}
+
+	}
+
+	writel_relaxed(prev_lbm_i_reg[cpu], ld_i_reg(cpu));
+	writel_relaxed(prev_lbm_d_reg[cpu], ld_d_reg(cpu));
+	raw_spin_unlock_irqrestore(&cache_lock, flags);
 }
 
 #define TRIALS 1000

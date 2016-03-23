@@ -11,6 +11,7 @@ obj-y     = sched_plugin.o litmus.o \
 	    sync.o \
 	    rt_domain.o \
 	    edf_common.o \
+		mc2_common.o \
 	    fp_common.o \
 	    fdso.o \
 	    locking.o \
@@ -19,9 +20,13 @@ obj-y     = sched_plugin.o litmus.o \
 	    binheap.o \
 	    ctrldev.o \
 	    uncachedev.o \
+		reservation.o \
+		polling_reservations.o \
 	    sched_gsn_edf.o \
 	    sched_psn_edf.o \
 	    sched_pfp.o \
+		sched_mc2.o \
+		bank_proc.o \
 		cache_proc.o
 
 obj-$(CONFIG_PLUGIN_CEDF) += sched_cedf.o

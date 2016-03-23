@@ -118,6 +118,9 @@ feather_callback void save_cpu_task_latency(unsigned long event, unsigned long w
 #define TS_TICK_START(t)		CPU_TTIMESTAMP(110, t)
 #define TS_TICK_END(t) 			CPU_TTIMESTAMP(111, t)
 
+#define TS_RELEASE_C_START		CPU_DTIMESTAMP(108, TSK_RT)
+#define TS_RELEASE_C_END		CPU_DTIMESTAMP(109, TSK_RT)
+
 #define TS_QUANTUM_BOUNDARY_START	CPU_TIMESTAMP_CUR(112)
 #define TS_QUANTUM_BOUNDARY_END		CPU_TIMESTAMP_CUR(113)
 
@@ -137,6 +140,17 @@ feather_callback void save_cpu_task_latency(unsigned long event, unsigned long w
 #define TS_SEND_RESCHED_START(c)	MSG_TIMESTAMP_SENT(190, c)
 #define TS_SEND_RESCHED_END		MSG_TIMESTAMP_RECEIVED(191)
 
-#define TS_RELEASE_LATENCY(when)	CPU_LTIMESTAMP(208, &(when))
+#define TS_ISR_START			CPU_TIMESTAMP_CUR(192)
+#define TS_ISR_END				CPU_TIMESTAMP_CUR(193)
+
+#define TS_RELEASE_LATENCY(when)    CPU_LTIMESTAMP(208, &(when))
+#define TS_RELEASE_LATENCY_A(when)  CPU_LTIMESTAMP(209, &(when))
+#define TS_RELEASE_LATENCY_B(when)  CPU_LTIMESTAMP(210, &(when))
+#define TS_RELEASE_LATENCY_C(when)  CPU_LTIMESTAMP(211, &(when))
+
+#define TS_SCHED_A_START			CPU_DTIMESTAMP(212, TSK_UNKNOWN)
+#define TS_SCHED_A_END(t)			CPU_TTIMESTAMP(213, t)
+#define TS_SCHED_C_START			CPU_DTIMESTAMP(214, TSK_UNKNOWN)
+#define TS_SCHED_C_END(t)			CPU_TTIMESTAMP(215, t)
 
 #endif /* !_SYS_TRACE_H_ */
