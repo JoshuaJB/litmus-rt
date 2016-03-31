@@ -14,6 +14,10 @@
 #include <linux/sched/rt.h>
 #include <linux/rwsem.h>
 #include <linux/interrupt.h>
+#include <linux/migrate.h>
+#include <linux/mm.h>
+#include <linux/memcontrol.h>
+#include <linux/mm_inline.h>
 
 #include <litmus/litmus.h>
 #include <litmus/bheap.h>
@@ -21,6 +25,8 @@
 #include <litmus/rt_domain.h>
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
+#include <litmus/cache_proc.h>
+#include <litmus/mc2_common.h>
 
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
@@ -313,6 +319,144 @@ asmlinkage long sys_null_call(cycles_t __user *ts)
 		ret = put_user(now, ts);
 	}
 
+	return ret;
+}
+
+asmlinkage long sys_reservation_create(int type, void __user *config)
+{
+    return litmus->reservation_create(type, config);
+}
+
+asmlinkage long sys_reservation_destroy(unsigned int reservation_id, int cpu)
+{
+    return litmus->reservation_destroy(reservation_id, cpu);
+}
+
+static unsigned long color_mask;
+
+static inline unsigned long page_color(struct page *page)
+{
+    return ((page_to_phys(page) & color_mask) >> PAGE_SHIFT);
+}
+
+extern int isolate_lru_page(struct page *page);
+extern void putback_movable_page(struct page *page);
+extern struct page *new_alloc_page(struct page *page, unsigned long node, int **x);
+
+asmlinkage long sys_set_page_color(int cpu)
+{
+	long ret = 0;
+	//struct page *page_itr = NULL;
+	struct vm_area_struct *vma_itr = NULL;
+	int nr_pages = 0, nr_shared_pages = 0, nr_failed = 0;
+	unsigned long node;
+	enum crit_level lv;
+		
+	LIST_HEAD(pagelist);
+	LIST_HEAD(shared_pagelist);
+	
+	
+	down_read(&current->mm->mmap_sem);
+	TRACE_TASK(current, "SYSCALL set_page_color\n");
+	vma_itr = current->mm->mmap;
+	while (vma_itr != NULL) {
+		unsigned int num_pages = 0, i;
+		struct page *old_page = NULL;
+		
+		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
+		// print vma flags
+		//printk(KERN_INFO "flags: 0x%lx\n", vma_itr->vm_flags);
+		//printk(KERN_INFO "start - end: 0x%lx - 0x%lx (%lu)\n", vma_itr->vm_start, vma_itr->vm_end, (vma_itr->vm_end - vma_itr->vm_start)/PAGE_SIZE);
+		//printk(KERN_INFO "vm_page_prot: 0x%lx\n", vma_itr->vm_page_prot);
+		
+		for (i = 0; i < num_pages; i++) {
+			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
+			
+			if (IS_ERR(old_page))
+				continue;
+			if (!old_page)
+				continue;
+
+			if (PageReserved(old_page)) {
+				TRACE("Reserved Page!\n");
+				put_page(old_page);
+				continue;
+			}
+			
+			TRACE_TASK(current, "addr: %08x, pfn: %x, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
+			
+			if (page_mapcount(old_page) == 1) {
+				ret = isolate_lru_page(old_page);
+				if (!ret) {
+					list_add_tail(&old_page->lru, &pagelist);
+					inc_zone_page_state(old_page, NR_ISOLATED_ANON + !PageSwapBacked(old_page));
+					nr_pages++;
+				} else {
+					TRACE_TASK(current, "isolate_lru_page failed\n");
+					TRACE_TASK(current, "page_lru = %d PageLRU = %d\n", page_lru(old_page), PageLRU(old_page));
+					nr_failed++;
+				}
+				//printk(KERN_INFO "PRIVATE _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
+				put_page(old_page);
+			}
+			else {
+				nr_shared_pages++;
+				//printk(KERN_INFO "SHARED _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
+				put_page(old_page);
+			}
+		}
+		
+		vma_itr = vma_itr->vm_next;
+	}
+
+	//list_for_each_entry(page_itr, &pagelist, lru) {
+//		printk(KERN_INFO "B _mapcount = %d, _count = %d\n", page_mapcount(page_itr), page_count(page_itr));
+//	}
+	
+	ret = 0;
+	if (!is_realtime(current))
+		lv = 1;
+	else {
+		lv = tsk_rt(current)->mc2_data->crit;
+	}
+	
+	if (cpu == -1)
+		node = 8;
+	else
+		node = cpu*2 + lv;
+		//node= 0;
+		
+	if (!list_empty(&pagelist)) {
+		ret = migrate_pages(&pagelist, new_alloc_page, NULL, node, MIGRATE_ASYNC, MR_SYSCALL);
+		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
+		if (ret) {
+			putback_movable_pages(&pagelist);
+		}
+	}
+	
+	/* handle sigpage and litmus ctrl_page */
+/*	vma_itr = current->mm->mmap;
+	while (vma_itr != NULL) {
+		if (vma_itr->vm_start == tsk_rt(current)->addr_ctrl_page) {
+			TRACE("litmus ctrl_page = %08x\n", vma_itr->vm_start);
+			vma_itr->vm_page_prot = PAGE_SHARED;
+			break;
+		}
+		vma_itr = vma_itr->vm_next;
+	}
+*/
+	up_read(&current->mm->mmap_sem);
+
+/*	
+	list_for_each_entry(page_itr, &shared_pagelist, lru) {
+		TRACE("S Anon=%d, pfn = %lu, _mapcount = %d, _count = %d\n", PageAnon(page_itr), __page_to_pfn(page_itr), page_mapcount(page_itr), page_count(page_itr));
+	}
+*/	
+	TRACE_TASK(current, "nr_pages = %d nr_failed = %d\n", nr_pages, nr_failed);
+	printk(KERN_INFO "node = %ld, nr_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages, nr_shared_pages, nr_failed);
+	//printk(KERN_INFO "node = %d\n", cpu_to_node(smp_processor_id()));
+	flush_cache(1);
+	
 	return ret;
 }
 
@@ -690,6 +834,12 @@ static int __init _init_litmus(void)
 	 *      mode change lock is used to enforce single mode change
 	 *      operation.
 	 */
+#if defined(CONFIG_CPU_V7)
+	unsigned int line_size_log = 5; // 2^5 = 32 byte
+	unsigned int cache_info_sets = 2048; // 64KB (way_size) / 32B (line_size) = 2048
+	printk("LITMIS^RT-ARM kernel\n");
+#endif
+
 	printk("Starting LITMUS^RT kernel\n");
 
 	register_sched_plugin(&linux_sched_plugin);
@@ -704,10 +854,14 @@ static int __init _init_litmus(void)
 	else
 		printk("Could not register kill rt tasks magic sysrq.\n");
 #endif
-
 	init_litmus_proc();
 
 	register_reboot_notifier(&shutdown_notifier);
+
+#if defined(CONFIG_CPU_V7)
+	color_mask = ((cache_info_sets << line_size_log) - 1) ^ (PAGE_SIZE - 1);
+	printk("Page color mask %lx\n", color_mask);
+#endif
 
 	return 0;
 }

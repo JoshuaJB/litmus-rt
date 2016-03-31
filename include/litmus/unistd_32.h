@@ -18,6 +18,10 @@
 #define __NR_release_ts		__LSC(10)
 #define __NR_null_call		__LSC(11)
 #define __NR_get_current_budget __LSC(12)
-#define __NR_test_call		__LSC(13)
+#define __NR_reservation_create	__LSC(13)
+#define __NR_reservation_destroy	__LSC(14)
+#define __NR_set_mc2_task_param	__LSC(15)
+#define __NR_set_page_color		__LSC(16)
+#define __NR_test_call		__LSC(17)
 
-#define NR_litmus_syscalls	14
+#define NR_litmus_syscalls	18

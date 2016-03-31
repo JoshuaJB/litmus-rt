@@ -410,7 +410,11 @@
 		CALL(sys_release_ts)
 		CALL(sys_null_call)
 /* 400 */	CALL(sys_get_current_budget)
-		CALL(sys_test_call)
+		CALL(sys_reservation_create)
+		CALL(sys_reservation_destroy)
+		CALL(sys_set_mc2_task_param)
+		CALL(sys_set_page_color)
+/* 405 */	CALL(sys_test_call)
 
 
 #ifndef syscalls_counted

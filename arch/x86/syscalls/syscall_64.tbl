@@ -343,7 +343,11 @@
 361	common	release_ts		sys_release_ts
 362	common	null_call		sys_null_call
 363	common	get_current_budget	sys_get_current_budget
-364	common	test_call		sys_test_call
+364	common	reservation_create	sys_reservation_create
+365	common	reservation_destroy	sys_reservation_destroy
+366	common	set_mc2_task_param	sys_set_mc2_task_param
+367	common	set_page_color		sys_set_page_color
+368	common	test_call		sys_test_call
 
 
 #
