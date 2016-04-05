@@ -243,7 +243,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	if (next) {
 		TRACE_TASK(next, "scheduled at %llu\n", litmus_clock());
 	} else {
-		TRACE("becoming idle at %llu\n", litmus_clock());
+		; //TRACE("becoming idle at %llu\n", litmus_clock());
 	}
 
 	pedf->scheduled = next;
@@ -644,10 +644,14 @@ static long psnedf_admit_task(struct task_struct* tsk)
 	    /* don't allow tasks on release master CPU */
 	     && task_cpu(tsk) != remote_edf(task_cpu(tsk))->release_master
 #endif
-		)
+		) {
+		TRACE_TASK(tsk, "admitted\n");
 		return 0;
-	else
+	}
+	else {
+		TRACE_TASK(tsk, "not admitted\n");
 		return -EINVAL;
+	}
 }
 
 /*	Plugin object	*/

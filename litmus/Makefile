@@ -27,6 +27,7 @@ obj-y     = sched_plugin.o litmus.o \
 	    sched_pfp.o \
 		sched_mc2.o \
 		bank_proc.o \
+	    color_shm.o \
 		cache_proc.o
 
 obj-$(CONFIG_PLUGIN_CEDF) += sched_cedf.o
