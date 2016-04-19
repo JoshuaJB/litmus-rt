@@ -168,6 +168,14 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		       pid, tp.budget_policy);
 		goto out_unlock;
 	}
+#ifdef CONFIG_PGMRT_SUPPORT
+	if (tp.pgm_type < PGM_NOT_A_NODE || tp.pgm_type > PGM_INTERNAL) {
+		printk(KERN_INFO "litmus: real-time task %d rejected "
+				"because of unknown PGM node type specified (%d)\n",
+				pid, tp.pgm_type);
+		goto out_unlock;
+	}
+#endif
 
 	target->rt_param.task_params = tp;
 

@@ -375,6 +375,7 @@ endmenu
 config PGMRT_SUPPORT
     bool "Support for PGM^RT API"
     default y
+    depends on LITMUS_LOCKING && ALLOW_EARLY_RELEASE
     help
       This option enables support for PGM^RT API. The source code of PGM^RT
       can be found https://github.com/GElliott/pgm . This option adds some
