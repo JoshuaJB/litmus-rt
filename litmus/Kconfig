@@ -372,4 +372,12 @@ config PREEMPT_STATE_TRACE
 
 endmenu
 
+config PGMRT_SUPPORT
+    bool "Support for PGM^RT API"
+    default y
+    help
+      This option enables support for PGM^RT API. The source code of PGM^RT
+      can be found https://github.com/GElliott/pgm . This option adds some
+      variables in rt_param.h.
+
 endmenu

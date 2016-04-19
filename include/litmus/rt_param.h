@@ -51,6 +51,16 @@ typedef enum {
 	TASK_EARLY
 } release_policy_t;
 
+#ifdef CONFIG_PGMRT_SUPPORT
+typedef enum {
+    PGM_NOT_A_NODE,
+    PGM_SRC,
+    PGM_SINK,
+    PGM_SRC_SINK,
+    PGM_INTERNAL
+} pgm_node_type_t;
+#endif
+
 /* We use the common priority interpretation "lower index == higher priority",
  * which is commonly used in fixed-priority schedulability analysis papers.
  * So, a numerically lower priority value implies higher scheduling priority,
@@ -122,6 +132,10 @@ struct rt_task {
 	task_class_t	cls;
 	budget_policy_t  budget_policy;  /* ignored by pfair */
 	release_policy_t release_policy;
+#ifdef CONFIG_PGMRT_SUPPORT
+	pgm_node_type_t	pgm_type;
+	lt_t			pgm_expected_etoe;
+#endif
 };
 
 union np_flag {
@@ -161,6 +175,13 @@ struct control_page {
 	uint64_t ts_syscall_start;  /* Feather-Trace cycles */
 	uint64_t irq_syscall_start; /* Snapshot of irq_count when the syscall
 				     * started. */
+
+#ifdef CONFIG_PGMRT_SUPPORT
+    /* Flags from userspace signifying PGM wait states. */
+    volatile uint32_t   pgm_waiting;    /* waiting for tokens */
+    volatile uint32_t   pgm_sending;    /* sending tokens */
+    volatile uint32_t   pgm_satisfied;  /* done waiting/sending */
+#endif
 
 	/* to be extended */
 };
