@@ -766,6 +766,7 @@ static inline void post_schedule(struct task_struct *next, int cpu)
  */
 static struct task_struct* mc2_schedule(struct task_struct * prev)
 {
+	int np, blocks, exists;
 	/* next == NULL means "schedule background work". */
 	lt_t now;
 	struct mc2_cpu_state *state = local_cpu_state();
@@ -784,6 +785,11 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	if (state->scheduled && !is_realtime(prev))
 		; //printk(KERN_ALERT "BUG2!!!!!!!! \n");
 
+	/* (0) Determine state */
+	exists = state->scheduled != NULL;
+	blocks = exists && !is_current_running();
+	np = exists && is_np(state->scheduled);
+	
 	/* update time */
 	state->sup_env.will_schedule = true;
 
@@ -806,10 +812,9 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	}
 	
 	/* figure out what to schedule next */
-	state->scheduled = mc2_dispatch(&state->sup_env, state);
-/*	if (state->scheduled && is_realtime(state->scheduled))
-		TRACE_TASK(state->scheduled, "mc2_dispatch picked me!\n");
-*/	
+	if (!np)
+		state->scheduled = mc2_dispatch(&state->sup_env, state);
+
 	if (!state->scheduled) {
 		raw_spin_lock(&_global_env.lock);
 		gmp_update_time(&_global_env, now);
