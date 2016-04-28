@@ -410,12 +410,33 @@ void do_partition(enum crit_level lv, int cpu)
 
 	}
 	barrier();
-	cache_lockdown(regs, cpu);
+	//cache_lockdown(regs, cpu);
+	writel_relaxed(regs, cache_base + L2X0_LOCKDOWN_WAY_D_BASE + cpu * L2X0_LOCKDOWN_STRIDE);
+	writel_relaxed(regs, cache_base + L2X0_LOCKDOWN_WAY_I_BASE + cpu * L2X0_LOCKDOWN_STRIDE);
 	barrier();
 
 	raw_spin_unlock_irqrestore(&cache_lock, flags);
 	
 	flush_cache(0);
+}
+
+void lock_cache(int cpu, u32 val)
+{
+	unsigned long flags;
+	
+	local_irq_save(flags);
+	if (val != 0xffffffff) {
+		writel_relaxed(val, cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
+					   cpu * L2X0_LOCKDOWN_STRIDE);
+		writel_relaxed(val, cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
+					   cpu * L2X0_LOCKDOWN_STRIDE);
+	}
+	else {
+		int i;
+		for (i = 0; i < 4; i++)
+			do_partition(CRIT_LEVEL_A, i);
+	}
+	local_irq_restore(flags);
 }
 
 int use_part_proc_handler(struct ctl_table *table, int write, void __user *buffer,

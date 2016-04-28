@@ -21,16 +21,23 @@
 #define NUM_COLORS			16
 
 static struct mutex dev_lock;
+static int bypass_cache;
 
-struct ioctl_cmd {
+struct color_ioctl_cmd {
 	unsigned int color;
 	unsigned int bank;
 };
 
-#define SET_COLOR_SHM_CMD \
-	_IOW(SHM_MAJOR, 0x1, struct ioctl_cmd)
+struct color_ioctl_offset {
+	unsigned long offset;
+	int lock;
+};
 
-struct ioctl_cmd color_param;
+#define SET_COLOR_SHM_CMD		_IOW(SHM_MAJOR, 0x1, struct color_ioctl_cmd)
+#define SET_COLOR_SHM_OFFSET	_IOW(SHM_MAJOR, 0x2, struct color_ioctl_offset)
+
+struct color_ioctl_cmd color_param;
+struct color_ioctl_offset color_offset;
 
 static int mmap_common_checks(struct vm_area_struct *vma)
 {
@@ -66,6 +73,8 @@ static int do_map_colored_page(struct vm_area_struct *vma,
 		const unsigned long color_no)
 {
 	int err = 0;
+	unsigned long offset = 2048;
+	
 	struct page *page = get_colored_page(color_no);
 
 	if (!page) {
@@ -77,12 +86,16 @@ static int do_map_colored_page(struct vm_area_struct *vma,
 
 	printk(KERN_INFO "vma: %p  addr: 0x%lx  color_no: %lu\n",
 			vma, addr, color_no);
+	
+	printk(KERN_INFO "vm_start: %lu vm_end: %lu\n",
+			vma->vm_start, vma->vm_end);
 
 	printk(KERN_INFO "inserting page (pa: 0x%lx) at vaddr: 0x%lx  "
 			"flags: 0x%lx  prot: 0x%lx\n",
 			page_to_phys(page), addr,
 			vma->vm_flags, pgprot_val(vma->vm_page_prot));
 
+	
 	err = vm_insert_page(vma, addr, page);
 	if (err) {
 		printk(KERN_INFO "vm_insert_page() failed (%d)\n", err);
@@ -101,9 +114,8 @@ static int do_map_colored_pages(struct vm_area_struct *vma)
 	int cur_bank = -1, cur_color = -1, err = 0;
 	int colors[16] = {0}, banks[8] = {0};
 
-//#ifdef CONFIG_PLUGIN_COLOR_UNCACHABLE
-//	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-//#endif
+	if (bypass_cache == 1)
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	
 	for (i = 0; i < NUM_BANKS; i++) {
 		if (((color_param.bank >> i)&0x1) == 1)
@@ -233,6 +245,11 @@ static int litmus_color_shm_mmap(struct file *filp, struct vm_area_struct *vma)
 		printk(KERN_INFO "color_info not set.\n");
 		return -EINVAL;
 	}
+	if (color_offset.offset == 0xffffffff || color_offset.lock == -1) {
+		printk(KERN_INFO "color_offset not set.\n");
+		return -EINVAL;
+	}
+	
 	err = mmap_common_checks(vma);
 	if (err) {
 		TRACE_CUR("failed mmap common checks\n");
@@ -247,6 +264,11 @@ static int litmus_color_shm_mmap(struct file *filp, struct vm_area_struct *vma)
 	TRACE_CUR("flags=0x%lx prot=0x%lx\n", vma->vm_flags,
 			pgprot_val(vma->vm_page_prot));
 out:
+	color_param.color == 0x00000000;
+	color_param.bank == 0x00000000;
+	color_offset.offset == 0xffffffff;
+	color_offset.lock == -1;
+	
 	return err;
 
 }
@@ -254,8 +276,9 @@ out:
 static long litmus_color_shm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	long err = -ENOIOCTLCMD;
-	struct ioctl_cmd param;
-	
+	struct color_ioctl_cmd color_info;
+	struct color_ioctl_offset color_off;
+				
 	printk(KERN_INFO "color_shm ioctl\n");
 	
 	if (_IOC_TYPE(cmd) != SHM_MAJOR)
@@ -264,14 +287,25 @@ static long litmus_color_shm_ioctl(struct file *filp, unsigned int cmd, unsigned
 	
 	switch (cmd) {
 		case SET_COLOR_SHM_CMD:
-			err = copy_from_user(&param, (void*)arg, sizeof(struct ioctl_cmd));
+			
+			err = copy_from_user(&color_info, (void*)arg, sizeof(struct color_ioctl_cmd));
 	
-			color_param.color = param.color;
-			color_param.bank = param.bank;
+			color_param.color = color_info.color;
+			color_param.bank = color_info.bank;
 			printk(KERN_INFO "COLOR = %x\n", color_param.color);
 			printk(KERN_INFO "BANK  = %x\n", color_param.bank);
 			err = 0;
 			break;
+		case SET_COLOR_SHM_OFFSET:
+			err = copy_from_user(&color_off, (void*)arg, sizeof(struct color_ioctl_offset));
+	
+			color_offset.offset = color_off.offset;
+			color_offset.lock = color_off.lock;
+			printk(KERN_INFO "OFFSET = %x\n", color_offset.offset);
+			printk(KERN_INFO "LOCK   = %d\n", color_offset.lock);
+			err = 0;
+			break;
+			
 		default:
 			printk(KERN_INFO "Invalid IOCTL CMD\n");
 			err = -EINVAL;
@@ -292,15 +326,67 @@ static struct miscdevice litmus_color_shm_dev = {
 	.fops	= &litmus_color_shm_fops,
 };
 
+struct mutex bypass_mutex;
+
+int bypass_proc_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret, mode;
+
+	mutex_lock(&bypass_mutex);
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	printk(KERN_INFO "shm_bypass = %d\n", bypass_cache);
+	mutex_unlock(&bypass_mutex);
+	
+	return ret;
+}
+
+static int zero = 0;
+static int one = 1;
+
+static struct ctl_table cache_table[] =
+{
+	{
+		.procname	= "shm_bypass",
+		.mode		= 0666,
+		.proc_handler	= bypass_proc_handler,
+		.data		= &bypass_cache,
+		.maxlen		= sizeof(bypass_cache),
+		.extra1		= &zero,
+		.extra2		= &one,
+	},	
+	{ }
+};
+
+static struct ctl_table litmus_dir_table[] = {
+	{
+		.procname	= "litmus",
+ 		.mode		= 0555,
+		.child		= cache_table,
+	},
+	{ }
+};
+
+static struct ctl_table_header *litmus_sysctls;
+
 static int __init init_color_shm_devices(void)
 {
 	int err;
 
 	printk(KERN_INFO "Registering LITMUS^RT color_shm devices.\n");
+	litmus_sysctls = register_sysctl_table(litmus_dir_table);
+	if (!litmus_sysctls) {
+		printk(KERN_WARNING "Could not register LITMUS^RT color_shm sysctl.\n");
+		err = -EFAULT;
+	}
+	
 	mutex_init(&dev_lock);
-	color_param.color = 0x0000ffff;
-	color_param.bank = 0x000000ff;
-
+	mutex_init(&bypass_mutex);
+	color_param.color = 0x00000000;
+	color_param.bank = 0x00000000;
+	color_offset.offset = 0xffffffff;
+	color_offset.lock = -1;
+	bypass_cache = 0;
 	err = misc_register(&litmus_color_shm_dev);
 	
 	return err;
