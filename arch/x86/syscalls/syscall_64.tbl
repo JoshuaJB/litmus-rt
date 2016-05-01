@@ -348,7 +348,8 @@
 366	common	set_mc2_task_param	sys_set_mc2_task_param
 367	common	set_page_color		sys_set_page_color
 368	common	test_call		sys_test_call
-
+369	common	run_test		sys_run_test
+370	common	lock_buffer		sys_lock_buffer
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

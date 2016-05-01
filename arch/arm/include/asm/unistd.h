@@ -19,7 +19,7 @@
  * This may need to be greater than __NR_last_syscall+1 in order to
  * account for the padding in the syscall table
  */
-#define __NR_syscalls  (388 + NR_litmus_syscalls + 2)
+#define __NR_syscalls  (388 + NR_litmus_syscalls + 0)
 
 
 /*

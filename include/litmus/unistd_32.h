@@ -23,5 +23,7 @@
 #define __NR_set_mc2_task_param	__LSC(15)
 #define __NR_set_page_color		__LSC(16)
 #define __NR_test_call		__LSC(17)
+#define __NR_run_test		__LSC(18)
+#define __NR_lock_buffer	__LSC(19)
 
-#define NR_litmus_syscalls	18
+#define NR_litmus_syscalls	20

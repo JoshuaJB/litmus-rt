@@ -1,3 +1,5 @@
+#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -7,6 +9,7 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/time.h>
+#include <linux/random.h>
 
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
@@ -21,6 +24,14 @@
 #define LOCK_ALL        (~UNLOCK_ALL)
 #define MAX_NR_WAYS	16
 #define MAX_NR_COLORS	16
+#define CACHELINE_SIZE 32
+#define INTS_IN_CACHELINE (CACHELINE_SIZE/sizeof(int))
+#define CACHELINES_IN_1KB (1024 / sizeof(cacheline_t))
+
+typedef struct cacheline
+{
+        int line[INTS_IN_CACHELINE];
+} __attribute__((aligned(CACHELINE_SIZE))) cacheline_t;
 
 void mem_lock(u32 lock_val, int cpu);
 
@@ -1119,6 +1130,135 @@ void flush_cache(int all)
 	writel_relaxed(prev_lbm_i_reg[cpu], ld_i_reg(cpu));
 	writel_relaxed(prev_lbm_d_reg[cpu], ld_d_reg(cpu));
 	raw_spin_unlock_irqrestore(&cache_lock, flags);
+}
+
+/* src = shared, dst = local */
+#if 0 // random
+asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *dst, lt_t __user *ts)
+{
+	/* size is in KB */
+	long ret = 0;
+	lt_t t1, t2;
+	int numlines = size * CACHELINES_IN_1KB;
+	int next, sum = 0, ran;
+	unsigned long flags;
+	
+	get_random_bytes(&ran, sizeof(int));
+	next = ran % ((size*1024)/sizeof(cacheline_t));
+	
+	//preempt_disable();
+	if (type == 1) {
+		int i, j;
+		color_read_in_mem_lock(0x0000FFF0, 0x0000000f, (void*)src, (void*)src + size*1024);
+		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
+		
+		local_irq_save(flags);
+		t1 = litmus_clock();
+		for (i = 0; i < numlines; i++) {
+			next = src[next].line[0];
+			for (j = 1; j < INTS_IN_CACHELINE; j++) {
+				dst[next].line[j] = src[next].line[j]; // read
+				//src[next].line[j] = dst[next].line[j]; // write
+			}			
+		}
+		t2 = litmus_clock();
+		local_irq_restore(flags);
+		sum = next + (int)t2;
+		t2 -= t1;
+		ret = put_user(t2, ts);
+	}
+	else {
+		int i, j;
+		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
+		local_irq_save(flags);
+		t1 = litmus_clock();
+		for (i = 0; i < numlines; i++) {
+			next = src[next].line[0];
+			for (j = 1; j < INTS_IN_CACHELINE; j++) {
+				dst[next].line[j] = src[next].line[j]; //read
+				//src[next].line[j] = dst[next].line[j]; //write
+			}			
+		}
+		t2 = litmus_clock();
+		local_irq_restore(flags);
+		sum = next + (int)t2;
+		t2 -= t1;
+		ret = put_user(t2, ts);
+		v7_flush_kern_dcache_area(src, size*1024);
+	}
+	//preempt_enable();
+	flush_cache(1);
+
+	return ret;
+}
+#else
+// sequential
+asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *dst, lt_t __user *ts)
+{
+	/* size is in KB */
+	long ret = 0;
+	lt_t t1, t2;
+	int numlines = size * CACHELINES_IN_1KB;
+	int sum = 0;
+	unsigned long flags;
+	
+	//preempt_disable();
+	if (type == 1) {
+		int i, j;
+		color_read_in_mem_lock(0x0000FFF0, 0x0000000f, (void*)src, (void*)src + size*1024);
+		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
+		
+		local_irq_save(flags);
+		t1 = litmus_clock();
+		for (i = 0; i < numlines; i++) {
+			for (j = 0; j < INTS_IN_CACHELINE; j++) {
+				//dst[i].line[j] = src[i].line[j]; // read
+				src[i].line[j] = dst[i].line[j]; // write
+			}			
+		}
+		t2 = litmus_clock();
+		local_irq_restore(flags);
+		sum = (int)(t1 + t2);
+		t2 -= t1;
+		ret = put_user(t2, ts);
+	}
+	else {
+		int i, j;
+		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
+		local_irq_save(flags);
+		t1 = litmus_clock();
+		for (i = 0; i < numlines; i++) {
+			for (j = 0; j < INTS_IN_CACHELINE; j++) {
+				//dst[i].line[j] = src[i].line[j]; //read
+				src[i].line[j] = dst[i].line[j]; //write
+			}			
+		}
+		t2 = litmus_clock();
+		local_irq_restore(flags);
+		sum = (int)(t1 + t2);
+		t2 -= t1;
+		ret = put_user(t2, ts);
+		v7_flush_kern_dcache_area(src, size*1024);
+	}
+	//preempt_enable();
+	flush_cache(1);
+
+	return ret;
+}
+#endif
+
+asmlinkage long sys_lock_buffer(void* vaddr, size_t size, u32 lock_way, u32 unlock_way)
+{
+	/* size is in bytes */
+	long ret = 0;
+	int i;
+	u32 lock_val, unlock_val;
+	
+	lock_val = ~lock_way & 0x0000ffff;
+	unlock_val = ~unlock_way & 0x0000ffff;
+	color_read_in_mem_lock(lock_val, unlock_val, (void*)vaddr, (void*)vaddr + size);
+	
+	return ret;
 }
 
 #define TRIALS 1000

@@ -383,3 +383,5 @@
 374	i386	set_mc2_task_param	sys_set_mc2_task_param
 375	i386	set_page_color		sys_set_page_color
 376	i386	test_call		sys_test_call
+377	i386	run_test		sys_run_test
+378	i386	lock_buffer		sys_lock_buffer

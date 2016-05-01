@@ -356,17 +356,26 @@ asmlinkage long sys_set_page_color(int cpu)
 	long ret = 0;
 	//struct page *page_itr = NULL;
 	struct vm_area_struct *vma_itr = NULL;
-	int nr_pages = 0, nr_shared_pages = 0, nr_failed = 0;
+	int nr_pages = 0, nr_shared_pages = 0, nr_failed = 0, nr_not_migrated = 0;
 	unsigned long node;
 	enum crit_level lv;
+	struct mm_struct *mm;
 		
 	LIST_HEAD(pagelist);
 	LIST_HEAD(shared_pagelist);
 	
+	migrate_prep();
 	
-	down_read(&current->mm->mmap_sem);
+	rcu_read_lock();
+	get_task_struct(current);
+	rcu_read_unlock();
+	mm = get_task_mm(current);
+	put_task_struct(current);
+
+	//down_read(&current->mm->mmap_sem);
+	down_read(&mm->mmap_sem);
 	TRACE_TASK(current, "SYSCALL set_page_color\n");
-	vma_itr = current->mm->mmap;
+	vma_itr = mm->mmap;
 	while (vma_itr != NULL) {
 		unsigned int num_pages = 0, i;
 		struct page *old_page = NULL;
@@ -376,7 +385,6 @@ asmlinkage long sys_set_page_color(int cpu)
 		//printk(KERN_INFO "flags: 0x%lx\n", vma_itr->vm_flags);
 		//printk(KERN_INFO "start - end: 0x%lx - 0x%lx (%lu)\n", vma_itr->vm_start, vma_itr->vm_end, (vma_itr->vm_end - vma_itr->vm_start)/PAGE_SIZE);
 		//printk(KERN_INFO "vm_page_prot: 0x%lx\n", vma_itr->vm_page_prot);
-		
 		for (i = 0; i < num_pages; i++) {
 			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
 			
@@ -393,7 +401,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			
 			TRACE_TASK(current, "addr: %08x, pfn: %x, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
 			
-			if (page_mapcount(old_page) == 1) {
+			//if (page_mapcount(old_page) == 1) {
 				ret = isolate_lru_page(old_page);
 				if (!ret) {
 					list_add_tail(&old_page->lru, &pagelist);
@@ -406,12 +414,14 @@ asmlinkage long sys_set_page_color(int cpu)
 				}
 				//printk(KERN_INFO "PRIVATE _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
 				put_page(old_page);
-			}
+			//}
+			/*
 			else {
 				nr_shared_pages++;
 				//printk(KERN_INFO "SHARED _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
 				put_page(old_page);
 			}
+			*/
 		}
 		
 		vma_itr = vma_itr->vm_next;
@@ -432,11 +442,12 @@ asmlinkage long sys_set_page_color(int cpu)
 		node = 8;
 	else
 		node = cpu*2 + lv;
-		//node= 0;
 		
 	if (!list_empty(&pagelist)) {
-		ret = migrate_pages(&pagelist, new_alloc_page, NULL, node, MIGRATE_ASYNC, MR_SYSCALL);
+		ret = migrate_pages(&pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
+		printk(KERN_INFO "%ld pages not migrated.\n", ret);
+		nr_not_migrated = ret;
 		if (ret) {
 			putback_movable_pages(&pagelist);
 		}
@@ -453,7 +464,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		vma_itr = vma_itr->vm_next;
 	}
 */
-	up_read(&current->mm->mmap_sem);
+	up_read(&mm->mmap_sem);
 
 /*	
 	list_for_each_entry(page_itr, &shared_pagelist, lru) {
@@ -461,7 +472,7 @@ asmlinkage long sys_set_page_color(int cpu)
 	}
 */	
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d\n", nr_pages, nr_failed);
-	printk(KERN_INFO "node = %ld, nr_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages, nr_shared_pages, nr_failed);
+	printk(KERN_INFO "node = %ld, nr_migrated_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages-nr_not_migrated, nr_failed-2, nr_failed);
 	//printk(KERN_INFO "node = %d\n", cpu_to_node(smp_processor_id()));
 	flush_cache(1);
 	
@@ -477,34 +488,48 @@ asmlinkage long sys_test_call(unsigned int param)
 	
 	TRACE_CUR("test_call param = %d\n", param);
 	
-	down_read(&current->mm->mmap_sem);
-	vma_itr = current->mm->mmap;
-	while (vma_itr != NULL) {
-		printk(KERN_INFO "--------------------------------------------\n");
-		printk(KERN_INFO "vm_start : %lx\n", vma_itr->vm_start);
-		printk(KERN_INFO "vm_end   : %lx\n", vma_itr->vm_end);
-		printk(KERN_INFO "vm_flags : %lx\n", vma_itr->vm_flags);
-		printk(KERN_INFO "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
-		printk(KERN_INFO "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
-/*		if (vma_itr->vm_file) {
-			struct file *fp = vma_itr->vm_file;
-			unsigned long fcount = atomic_long_read(&(fp->f_count));
-			printk(KERN_INFO "f_count : %ld\n", fcount);
-			if (fcount > 1) {
-				vma_itr->vm_page_prot = pgprot_noncached(vma_itr->vm_page_prot);
+	if (param == 0) {
+		down_read(&current->mm->mmap_sem);
+		vma_itr = current->mm->mmap;
+		while (vma_itr != NULL) {
+			printk(KERN_INFO "--------------------------------------------\n");
+			printk(KERN_INFO "vm_start : %lx\n", vma_itr->vm_start);
+			printk(KERN_INFO "vm_end   : %lx\n", vma_itr->vm_end);
+			printk(KERN_INFO "vm_flags : %lx\n", vma_itr->vm_flags);
+			printk(KERN_INFO "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
+			printk(KERN_INFO "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
+	/*		if (vma_itr->vm_file) {
+				struct file *fp = vma_itr->vm_file;
+				unsigned long fcount = atomic_long_read(&(fp->f_count));
+				printk(KERN_INFO "f_count : %ld\n", fcount);
+				if (fcount > 1) {
+					vma_itr->vm_page_prot = pgprot_noncached(vma_itr->vm_page_prot);
+				}
 			}
+			printk(KERN_INFO "vm_prot2 : %x\n", pgprot_val(vma_itr->vm_page_prot));
+	*/		
+			vma_itr = vma_itr->vm_next;
 		}
-		printk(KERN_INFO "vm_prot2 : %x\n", pgprot_val(vma_itr->vm_page_prot));
-*/		
-		vma_itr = vma_itr->vm_next;
+		printk(KERN_INFO "--------------------------------------------\n");
+		up_read(&current->mm->mmap_sem);
+		
+		local_irq_save(flags);
+		l2c310_flush_all();
+		local_irq_restore(flags);
 	}
-	printk(KERN_INFO "--------------------------------------------\n");
-	up_read(&current->mm->mmap_sem);
-	
-	local_irq_save(flags);
-	l2c310_flush_all();
-	local_irq_restore(flags);
-	
+	else if (param == 1) {
+		int i;
+		flush_cache(1);
+		for (i = 0; i < 4; i++) {
+			lock_cache(i, 0x00003fff);
+		}
+	}
+	else if (param == 2) {
+		int i;
+		for (i = 0; i < 4; i++) {
+			lock_cache(i, 0xffffffff);
+		}
+	}
 	return ret;
 }
 
