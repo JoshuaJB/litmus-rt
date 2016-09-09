@@ -25,6 +25,8 @@ DEFINE_PER_CPU(struct list_head, shared_lib_page_list);
 #define shared_lib_pages_for(cpu_id)	(&per_cpu(shared_lib_page_list, cpu_id))
 #define local_shared_lib_pages()	(this_cpu_ptr(&shared_lib_page_list))
 
+#define INVALID_PFN				(0xffffffff)
+
 static int __init litmus_replicate_lib_init(void)
 {
 	int cpu, ret = 0;

@@ -353,6 +353,10 @@ extern void putback_movable_page(struct page *page);
 extern struct page *new_alloc_page(struct page *page, unsigned long node, int **x);
 
 DECLARE_PER_CPU(struct list_head, shared_lib_page_list);
+#define INVALID_PFN				(0xffffffff)
+LIST_HEAD(shared_lib_pages);
+//struct list_head shared_lib_pages = LIST_HEAD_INIT(shared_lib_pages);
+EXPORT_SYMBOL(shared_lib_pages);
 
 asmlinkage long sys_set_page_color(int cpu)
 {
@@ -366,8 +370,8 @@ asmlinkage long sys_set_page_color(int cpu)
 	//struct list_head *shared_pagelist = this_cpu_ptr(&shared_lib_page_list);
 		
 	LIST_HEAD(pagelist);
-	LIST_HEAD(shared_pagelist);
-	
+	LIST_HEAD(task_shared_pagelist);
+
 	migrate_prep();
 	
 	rcu_read_lock();
@@ -408,10 +412,36 @@ asmlinkage long sys_set_page_color(int cpu)
 			
 			if (page_count(old_page) > 2 && vma_itr->vm_file != NULL && !(vma_itr->vm_flags&VM_WRITE)) {
 				struct shared_lib_page *lib_page;
-				lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
-				lib_page->p_page = old_page;
-				lib_page->pfn = page_to_pfn(old_page);
-				list_add_tail(&lib_page->list, &shared_pagelist);				
+				int is_exist = 0;
+
+				/* update PSL list */
+				/* check if this page is in the PSL list */
+				rcu_read_lock();
+				list_for_each_entry(lib_page, &shared_lib_pages, list)
+				{
+					if (page_to_pfn(old_page) == lib_page->p_pfn) {
+						is_exist = 1;
+						break;
+					}
+				}
+				rcu_read_unlock();
+	
+				if (is_exist == 0) {
+					lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
+					lib_page->p_page = old_page;
+					lib_page->r_page = NULL;
+					lib_page->p_pfn = page_to_pfn(old_page);
+					lib_page->r_pfn = INVALID_PFN;
+					list_add_tail(&lib_page->list, &shared_lib_pages);
+					TRACE_TASK(current, "NEW PAGE %ld ADDED.\n", lib_page->p_pfn);
+				}
+				else {
+					TRACE_TASK(current, "FOUND PAGE %ld in the list.\n", lib_page->p_pfn);
+				}
+				
+				/* add to task_shared_pagelist */
+				list_add_tail(&old_page->lru, &task_shared_pagelist);
+				
 				nr_shared_pages++;
 				TRACE_TASK(current, "SHARED\n");
 			}
@@ -428,7 +458,7 @@ asmlinkage long sys_set_page_color(int cpu)
 				}
 				//printk(KERN_INFO "PRIVATE _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
 				put_page(old_page);
-				TRACE_TASK(current, "PRIVATE\n");
+				//TRACE_TASK(current, "PRIVATE\n");
 			}
 		}
 		TRACE_TASK(current, "PAGES_IN_VMA = %d size = %d KB\n", pages_in_vma, pages_in_vma*4);
@@ -454,10 +484,18 @@ asmlinkage long sys_set_page_color(int cpu)
 	if (!list_empty(&pagelist)) {
 		ret = migrate_pages(&pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
-		printk(KERN_INFO "%ld pages not migrated.\n", ret);
 		nr_not_migrated = ret;
 		if (ret) {
 			putback_movable_pages(&pagelist);
+		}
+	}
+	
+	if (!list_empty(&task_shared_pagelist)) {
+		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
+		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
+		nr_not_migrated += ret;
+		if (ret) {
+			putback_movable_pages(&task_shared_pagelist);
 		}
 	}
 	
@@ -480,14 +518,14 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	flush_cache(1);
 /* for debug START */
-	TRACE_TASK(current, "SHARED PAGES\n");
+	TRACE_TASK(current, "PSL PAGES\n");
 	{
 		struct shared_lib_page *lpage;
 		
 		rcu_read_lock();
-		list_for_each_entry(lpage, &shared_pagelist, list)
+		list_for_each_entry(lpage, &shared_lib_pages, list)
 		{
-			TRACE_TASK(current, "PFN = %ld\n", lpage->pfn);
+			TRACE_TASK(current, "p_PFN = %ld r_PFN = %ld\n", lpage->p_pfn, lpage->r_pfn);
 		}
 		rcu_read_unlock();
 	}

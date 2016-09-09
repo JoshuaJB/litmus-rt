@@ -7,8 +7,12 @@
 
 struct shared_lib_page {
 	struct page *p_page;
-	unsigned long pfn;
+	struct page *r_page;
+	unsigned long p_pfn;
+	unsigned long r_pfn;
 	struct list_head list;
 };
+
+extern struct list_head shared_lib_pages;
 
 #endif
