@@ -27,6 +27,7 @@
 #include <litmus/sched_trace.h>
 #include <litmus/cache_proc.h>
 #include <litmus/mc2_common.h>
+#include <litmus/replicate_lib.h>
 
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
@@ -351,6 +352,8 @@ extern int isolate_lru_page(struct page *page);
 extern void putback_movable_page(struct page *page);
 extern struct page *new_alloc_page(struct page *page, unsigned long node, int **x);
 
+DECLARE_PER_CPU(struct list_head, shared_lib_page_list);
+
 asmlinkage long sys_set_page_color(int cpu)
 {
 	long ret = 0;
@@ -360,6 +363,7 @@ asmlinkage long sys_set_page_color(int cpu)
 	unsigned long node;
 	enum crit_level lv;
 	struct mm_struct *mm;
+	//struct list_head *shared_pagelist = this_cpu_ptr(&shared_lib_page_list);
 		
 	LIST_HEAD(pagelist);
 	LIST_HEAD(shared_pagelist);
@@ -372,13 +376,13 @@ asmlinkage long sys_set_page_color(int cpu)
 	mm = get_task_mm(current);
 	put_task_struct(current);
 
-	//down_read(&current->mm->mmap_sem);
 	down_read(&mm->mmap_sem);
 	TRACE_TASK(current, "SYSCALL set_page_color\n");
 	vma_itr = mm->mmap;
 	while (vma_itr != NULL) {
 		unsigned int num_pages = 0, i;
 		struct page *old_page = NULL;
+		int pages_in_vma = 0;
 		
 		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 		// print vma flags
@@ -399,9 +403,19 @@ asmlinkage long sys_set_page_color(int cpu)
 				continue;
 			}
 			
-			TRACE_TASK(current, "addr: %08x, pfn: %x, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
+			TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
+			pages_in_vma++;
 			
-			//if (page_mapcount(old_page) == 1) {
+			if (page_count(old_page) > 2 && vma_itr->vm_file != NULL && !(vma_itr->vm_flags&VM_WRITE)) {
+				struct shared_lib_page *lib_page;
+				lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
+				lib_page->p_page = old_page;
+				lib_page->pfn = page_to_pfn(old_page);
+				list_add_tail(&lib_page->list, &shared_pagelist);				
+				nr_shared_pages++;
+				TRACE_TASK(current, "SHARED\n");
+			}
+			else {
 				ret = isolate_lru_page(old_page);
 				if (!ret) {
 					list_add_tail(&old_page->lru, &pagelist);
@@ -414,16 +428,10 @@ asmlinkage long sys_set_page_color(int cpu)
 				}
 				//printk(KERN_INFO "PRIVATE _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
 				put_page(old_page);
-			//}
-			/*
-			else {
-				nr_shared_pages++;
-				//printk(KERN_INFO "SHARED _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
-				put_page(old_page);
+				TRACE_TASK(current, "PRIVATE\n");
 			}
-			*/
 		}
-		
+		TRACE_TASK(current, "PAGES_IN_VMA = %d size = %d KB\n", pages_in_vma, pages_in_vma*4);
 		vma_itr = vma_itr->vm_next;
 	}
 
@@ -466,15 +474,52 @@ asmlinkage long sys_set_page_color(int cpu)
 */
 	up_read(&mm->mmap_sem);
 
-/*	
-	list_for_each_entry(page_itr, &shared_pagelist, lru) {
-		TRACE("S Anon=%d, pfn = %lu, _mapcount = %d, _count = %d\n", PageAnon(page_itr), __page_to_pfn(page_itr), page_mapcount(page_itr), page_count(page_itr));
-	}
-*/	
+	
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d\n", nr_pages, nr_failed);
-	printk(KERN_INFO "node = %ld, nr_migrated_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages-nr_not_migrated, nr_failed-2, nr_failed);
-	//printk(KERN_INFO "node = %d\n", cpu_to_node(smp_processor_id()));
+	printk(KERN_INFO "node = %ld, nr_migrated_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages-nr_not_migrated, nr_shared_pages, nr_failed);
+
 	flush_cache(1);
+/* for debug START */
+	TRACE_TASK(current, "SHARED PAGES\n");
+	{
+		struct shared_lib_page *lpage;
+		
+		rcu_read_lock();
+		list_for_each_entry(lpage, &shared_pagelist, list)
+		{
+			TRACE_TASK(current, "PFN = %ld\n", lpage->pfn);
+		}
+		rcu_read_unlock();
+	}
+	
+	TRACE_TASK(current, "AFTER migration\n");
+	down_read(&mm->mmap_sem);
+	vma_itr = mm->mmap;
+	while (vma_itr != NULL) {
+		unsigned int num_pages = 0, i;
+		struct page *old_page = NULL;
+		
+		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
+		for (i = 0; i < num_pages; i++) {
+			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
+			if (IS_ERR(old_page))
+				continue;
+			if (!old_page)
+				continue;
+
+			if (PageReserved(old_page)) {
+				TRACE("Reserved Page!\n");
+				put_page(old_page);
+				continue;
+			}
+			TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
+			put_page(old_page);
+		}
+		
+		vma_itr = vma_itr->vm_next;
+	}
+	up_read(&mm->mmap_sem);
+/* for debug FIN. */
 	
 	return ret;
 }

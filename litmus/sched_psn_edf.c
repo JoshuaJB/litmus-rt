@@ -23,6 +23,10 @@
 #include <litmus/sched_trace.h>
 #include <litmus/trace.h>
 
+#ifdef CONFIG_PGMRT_SUPPORT
+#include <litmus/pgm.h>
+#endif
+
 /* to set up domain/cpu mappings */
 #include <litmus/litmus_proc.h>
 
@@ -199,6 +203,62 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	 */
 	resched = preempt;
 
+#ifdef CONFIG_PGMRT_SUPPORT
+	if (exists) {
+		if (is_pgm_sending(pedf->scheduled)) {
+			if (!is_pgm_satisfied(pedf->scheduled)) {
+				if (!is_priority_boosted(pedf->scheduled)) {
+					TRACE_TASK(pedf->scheduled, "is sending PGM tokens and needs boosting.\n");
+					BUG_ON(is_pgm_satisfied(pedf->scheduled));
+
+					/* We are either sending tokens or waiting for tokes.
+					   If waiting: Boost priority so we'll be scheduled
+						immediately when needed tokens arrive.
+					   If sending: Boost priority so no one (specifically, our
+						consumers) will preempt us while signalling the token
+						transmission.
+					*/
+					tsk_rt(pedf->scheduled)->priority_boosted = 1;
+					tsk_rt(pedf->scheduled)->boost_start_time = litmus_clock();
+
+					if (likely(!blocks)) {
+						requeue(pedf->scheduled, edf);
+						/* we may regain the processor */
+						if (preempt) {
+							preempt = edf_preemption_needed(edf, prev);
+							if (!preempt) {
+								TRACE_TASK(pedf->scheduled, "blocked preemption by lazy boosting.\n");
+							}
+						}
+					}
+				}
+			}
+			else { /* sending is satisfied */
+				tsk_rt(pedf->scheduled)->ctrl_page->pgm_sending = 0;
+				tsk_rt(pedf->scheduled)->ctrl_page->pgm_satisfied = 0;
+
+				if (is_priority_boosted(pedf->scheduled)) {
+					TRACE_TASK(pedf->scheduled,
+							"is done sending PGM tokens must relinquish boosting.\n");
+					/* clear boosting */
+					tsk_rt(pedf->scheduled)->priority_boosted = 0;
+					if(likely(!blocks)) {
+						/* recheck priority */
+						requeue(pedf->scheduled, edf);
+						/* we may lose the processor */
+						if (!preempt) {
+							preempt = edf_preemption_needed(edf, prev);
+							if (preempt) {
+								TRACE_TASK(pedf->scheduled, "preempted by lazy unboosting.\n");
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+#endif
+	
 	/* If a task blocks we have no choice but to reschedule.
 	 */
 	if (blocks)

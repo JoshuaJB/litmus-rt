@@ -1133,7 +1133,7 @@ void flush_cache(int all)
 }
 
 /* src = shared, dst = local */
-#if 0 // random
+#if 1 // random
 asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *dst, lt_t __user *ts)
 {
 	/* size is in KB */
@@ -1157,8 +1157,8 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 		for (i = 0; i < numlines; i++) {
 			next = src[next].line[0];
 			for (j = 1; j < INTS_IN_CACHELINE; j++) {
-				dst[next].line[j] = src[next].line[j]; // read
-				//src[next].line[j] = dst[next].line[j]; // write
+				//dst[next].line[j] = src[next].line[j]; // read
+				src[next].line[j] = dst[next].line[j]; // write
 			}			
 		}
 		t2 = litmus_clock();
@@ -1175,8 +1175,8 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 		for (i = 0; i < numlines; i++) {
 			next = src[next].line[0];
 			for (j = 1; j < INTS_IN_CACHELINE; j++) {
-				dst[next].line[j] = src[next].line[j]; //read
-				//src[next].line[j] = dst[next].line[j]; //write
+				//dst[next].line[j] = src[next].line[j]; //read
+				src[next].line[j] = dst[next].line[j]; //write
 			}			
 		}
 		t2 = litmus_clock();
