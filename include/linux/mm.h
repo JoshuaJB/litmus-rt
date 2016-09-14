@@ -1742,6 +1742,12 @@ extern void show_mem(unsigned int flags);
 extern void si_meminfo(struct sysinfo * val);
 extern void si_meminfo_node(struct sysinfo *val, int nid);
 
+#ifdef CONFIG_PAGE_REPLICATION
+extern void replication_init(void);
+#else
+static inline void replication_init(void) {}
+#endif
+
 extern __printf(3, 4)
 void warn_alloc_failed(gfp_t gfp_mask, int order, const char *fmt, ...);
 

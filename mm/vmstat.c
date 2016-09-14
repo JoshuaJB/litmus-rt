@@ -708,6 +708,9 @@ const char * const vmstat_text[] = {
 	"nr_anon_pages",
 	"nr_mapped",
 	"nr_file_pages",
+#ifdef CONFIG_PAGE_REPLICATION
+	"nr_repl_pages",
+#endif
 	"nr_dirty",
 	"nr_writeback",
 	"nr_slab_reclaimable",
@@ -759,6 +762,11 @@ const char * const vmstat_text[] = {
 
 	"pgfault",
 	"pgmajfault",
+
+#ifdef CONFIG_PAGE_REPLICATION
+	"pgreplicated",
+	"pgreplicazap",
+#endif
 
 	TEXTS_FOR_ZONES("pgrefill")
 	TEXTS_FOR_ZONES("pgsteal_kswapd")

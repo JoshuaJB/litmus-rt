@@ -109,6 +109,7 @@ enum pageflags {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	PG_compound_lock,
 #endif
+	PG_replicated,
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -288,6 +289,18 @@ TESTSCFLAG(HWPoison, hwpoison)
 PAGEFLAG_FALSE(HWPoison)
 #define __PG_HWPOISON 0
 #endif
+
+#ifdef CONFIG_PAGE_REPLICATION
+#define PageReplicated(page)	test_bit(PG_replicated, &(page)->flags)
+#define __SetPageReplicated(page) do { BUG_ON(PageDirty(page) || \
+	PageWriteback(page)); __set_bit(PG_replicated, &(page)->flags); } while (0)
+#define SetPageReplicated(page)	do { BUG_ON(PageDirty(page) || PageWriteback(page)); \
+	set_bit(PG_replicated, &(page)->flags); } while (0)
+#define ClearPageReplicated(page) clear_bit(PG_replicated, &(page)->flags) 
+#else
+#define PageReplicated(page)	0
+#endif
+
 
 /*
  * On an anonymous page mapped into a user virtual memory area,

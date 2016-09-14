@@ -57,8 +57,11 @@ static inline int radix_tree_is_indirect_ptr(void *ptr)
 }
 
 /*** radix-tree API starts here ***/
-
+#ifdef CONFIG_PAGE_REPLICATION
+#define RADIX_TREE_MAX_TAGS 4
+#else
 #define RADIX_TREE_MAX_TAGS 3
+#endif
 
 #ifdef __KERNEL__
 #define RADIX_TREE_MAP_SHIFT	(CONFIG_BASE_SMALL ? 4 : 6)

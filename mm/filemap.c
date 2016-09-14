@@ -969,8 +969,10 @@ struct page *find_get_entry(struct address_space *mapping, pgoff_t offset)
 repeat:
 	page = NULL;
 	pagep = radix_tree_lookup_slot(&mapping->page_tree, offset);
+	
 	if (pagep) {
 		page = radix_tree_deref_slot(pagep);
+		
 		if (unlikely(!page))
 			goto out;
 		if (radix_tree_exception(page)) {
@@ -983,6 +985,9 @@ repeat:
 			 */
 			goto out;
 		}
+
+		page = get_unreplicated_page(mapping, page);
+
 		if (!page_cache_get_speculative(page))
 			goto repeat;
 
@@ -1164,11 +1169,13 @@ unsigned find_get_entries(struct address_space *mapping,
 		return 0;
 
 	rcu_read_lock();
+
 restart:
 	radix_tree_for_each_slot(slot, &mapping->page_tree, &iter, start) {
 		struct page *page;
 repeat:
 		page = radix_tree_deref_slot(slot);
+		
 		if (unlikely(!page))
 			continue;
 		if (radix_tree_exception(page)) {
@@ -1181,6 +1188,9 @@ repeat:
 			 */
 			goto export;
 		}
+		
+		page = get_unreplicated_page(mapping, page);
+		
 		if (!page_cache_get_speculative(page))
 			goto repeat;
 
@@ -1226,6 +1236,7 @@ unsigned find_get_pages(struct address_space *mapping, pgoff_t start,
 		return 0;
 
 	rcu_read_lock();
+	
 restart:
 	radix_tree_for_each_slot(slot, &mapping->page_tree, &iter, start) {
 		struct page *page;
@@ -1233,7 +1244,7 @@ repeat:
 		page = radix_tree_deref_slot(slot);
 		if (unlikely(!page))
 			continue;
-
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1251,6 +1262,8 @@ repeat:
 			 */
 			continue;
 		}
+
+		page = get_unreplicated_page(mapping, page);
 
 		if (!page_cache_get_speculative(page))
 			goto repeat;
@@ -1293,6 +1306,7 @@ unsigned find_get_pages_contig(struct address_space *mapping, pgoff_t index,
 		return 0;
 
 	rcu_read_lock();
+	
 restart:
 	radix_tree_for_each_contig(slot, &mapping->page_tree, &iter, index) {
 		struct page *page;
@@ -1319,6 +1333,8 @@ repeat:
 			break;
 		}
 
+		page = get_unreplicated_page(mapping, page);
+
 		if (!page_cache_get_speculative(page))
 			goto repeat;
 
@@ -1344,6 +1360,7 @@ repeat:
 	}
 	rcu_read_unlock();
 	return ret;
+	
 }
 EXPORT_SYMBOL(find_get_pages_contig);
 
@@ -1400,6 +1417,8 @@ repeat:
 			 */
 			continue;
 		}
+
+		page = get_unreplicated_page(mapping, page);
 
 		if (!page_cache_get_speculative(page))
 			goto repeat;
@@ -1485,7 +1504,9 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 
 		cond_resched();
 find_page:
-		page = find_get_page(mapping, index);
+//		page = find_get_page(mapping, index);
+		page = find_get_page_readonly(mapping, index);
+		
 		if (!page) {
 			page_cache_sync_readahead(mapping,
 					ra, filp,
@@ -1771,6 +1792,15 @@ static int page_cache_read(struct file *file, pgoff_t offset)
 
 #define MMAP_LOTSAMISS  (100)
 
+static struct page *find_get_page_write(struct address_space *mapping,
+					pgoff_t index, int write)
+{
+	if (write)
+		return find_get_page(mapping, index);
+	else
+		return find_get_page_readonly(mapping, index);
+}
+
 /*
  * Synchronous readahead happens when we don't even find
  * a page in the page cache at all.
@@ -1882,6 +1912,7 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	 * Do we have something in the page cache already?
 	 */
 	page = find_get_page(mapping, offset);
+//	page = find_get_page_write(mapping, offset, vmf->flags & FAULT_FLAG_WRITE);
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*
 		 * We found the page, so try async readahead before
@@ -1896,6 +1927,7 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		ret = VM_FAULT_MAJOR;
 retry_find:
 		page = find_get_page(mapping, offset);
+//		page = find_get_page_write(mapping, offset, vmf->flags & FAULT_FLAG_WRITE);
 		if (!page)
 			goto no_cached_page;
 	}

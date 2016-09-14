@@ -13,6 +13,7 @@
 
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/pagemap.h>
 
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 		unsigned long floor, unsigned long ceiling);
@@ -153,6 +154,46 @@ __find_buddy_index(unsigned long page_idx, unsigned int order)
 {
 	return page_idx ^ (1 << order);
 }
+
+#ifdef CONFIG_PAGE_REPLICATION
+/*
+ * Pagecache replication
+ */
+extern int reclaim_replicated_page(struct address_space *mapping,
+		struct page *page);
+extern struct page *get_unreplicated_page(struct address_space *mapping,
+				struct page *page);
+extern struct page *find_get_page_readonly(struct address_space *mapping,
+						unsigned long offset);
+int page_write_fault_retry(struct page *page);
+#else
+static inline int reclaim_replicated_page(struct address_space *mapping,
+		struct page *page)
+{
+	BUG();
+	return 0;
+}
+
+static inline struct page *get_unreplicated_page(struct address_space *mapping,
+				struct page *page)
+{
+	if (page)
+		page_cache_get(page);
+	return page;
+}
+
+static inline struct page *find_get_page_readonly(struct address_space *mapping,
+						unsigned long offset)
+{
+	return find_get_page(mapping, offset);
+}
+
+int page_write_fault_retry(struct page *page)
+{
+	return 0;
+}
+
+#endif
 
 extern int __isolate_free_page(struct page *page, unsigned int order);
 extern void __free_pages_bootmem(struct page *page, unsigned int order);

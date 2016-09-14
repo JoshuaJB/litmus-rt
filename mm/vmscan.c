@@ -582,6 +582,7 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 	BUG_ON(!PageLocked(page));
 	BUG_ON(mapping != page_mapping(page));
 
+again:
 	spin_lock_irq(&mapping->tree_lock);
 	/*
 	 * The non racy check for a busy page.
@@ -640,7 +641,12 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		if (reclaimed && page_is_file_cache(page) &&
 		    !mapping_exiting(mapping))
 			shadow = workingset_eviction(mapping, page);
-		__delete_from_page_cache(page, shadow);
+		
+		if (PageReplicated(page)) {
+			if (reclaim_replicated_page(mapping, page))
+					goto again;
+		} else
+			__delete_from_page_cache(page, shadow);
 		spin_unlock_irq(&mapping->tree_lock);
 
 		if (freepage != NULL)

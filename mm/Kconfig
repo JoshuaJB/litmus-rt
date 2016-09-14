@@ -275,6 +275,15 @@ config MIGRATION
 	  pages as migration can relocate pages to satisfy a huge page
 	  allocation instead of reclaiming.
 
+#
+# support for per-core page replication
+#
+config PAGE_REPLICATION
+	bool "Pagecache replication"
+	def_bool n
+	help
+	  Enables per-core pagecache replication
+	  
 config ARCH_ENABLE_HUGEPAGE_MIGRATION
 	bool
 

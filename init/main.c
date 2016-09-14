@@ -628,6 +628,7 @@ asmlinkage __visible void __init start_kernel(void)
 	kmemleak_init();
 	setup_per_cpu_pageset();
 	numa_policy_init();
+	replication_init();
 	if (late_time_init)
 		late_time_init();
 	sched_clock_init();

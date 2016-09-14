@@ -2314,6 +2314,12 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		if (!trylock_page(old_page)) {
 			page_cache_get(old_page);
 			pte_unmap_unlock(page_table, ptl);
+			
+			//if (page_write_fault_retry(old_page)) {
+			//	page_cache_release(old_page);
+			//	return 0;
+			//}
+			
 			lock_page(old_page);
 			page_table = pte_offset_map_lock(mm, pmd, address,
 							 &ptl);
