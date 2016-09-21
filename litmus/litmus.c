@@ -419,7 +419,7 @@ asmlinkage long sys_set_page_color(int cpu)
 				rcu_read_lock();
 				list_for_each_entry(lib_page, &shared_lib_pages, list)
 				{
-					if (page_to_pfn(old_page) == lib_page->p_pfn) {
+					if (page_to_pfn(old_page) == lib_page->master_pfn) {
 						is_exist = 1;
 						break;
 					}
@@ -428,15 +428,15 @@ asmlinkage long sys_set_page_color(int cpu)
 	
 				if (is_exist == 0) {
 					lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
-					lib_page->p_page = old_page;
+					lib_page->master_page = old_page;
 					lib_page->r_page = NULL;
-					lib_page->p_pfn = page_to_pfn(old_page);
+					lib_page->master_pfn = page_to_pfn(old_page);
 					lib_page->r_pfn = INVALID_PFN;
 					list_add_tail(&lib_page->list, &shared_lib_pages);
-					TRACE_TASK(current, "NEW PAGE %ld ADDED.\n", lib_page->p_pfn);
+					TRACE_TASK(current, "NEW PAGE %ld ADDED.\n", lib_page->master_pfn);
 				}
 				else {
-					TRACE_TASK(current, "FOUND PAGE %ld in the list.\n", lib_page->p_pfn);
+					TRACE_TASK(current, "FOUND PAGE %ld in the list.\n", lib_page->master_pfn);
 				}
 				
 				/* add to task_shared_pagelist */
@@ -490,6 +490,21 @@ asmlinkage long sys_set_page_color(int cpu)
 		}
 	}
 	
+	{
+		struct list_head *pos, *q;
+		list_for_each_safe(pos, q, &task_shared_pagelist) {
+			struct page *p_entry = NULL;
+			struct shared_lib_page *lib_desc = NULL;
+		
+			p_entry = list_entry(pos, struct page, lru);
+			list_for_each_entry(lib_desc, &shared_lib_pages, list) {
+				if (p_entry == lib_desc->r_page) {
+					list_del(pos);
+				}
+			}
+		}
+	}
+	
 	if (!list_empty(&task_shared_pagelist)) {
 		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
@@ -525,7 +540,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		rcu_read_lock();
 		list_for_each_entry(lpage, &shared_lib_pages, list)
 		{
-			TRACE_TASK(current, "p_PFN = %ld r_PFN = %ld\n", lpage->p_pfn, lpage->r_pfn);
+			TRACE_TASK(current, "master_PFN = %ld r_PFN = %ld PageSwapCache=%d\n", lpage->master_pfn, lpage->r_pfn, PageSwapCache(lpage->master_page));
 		}
 		rcu_read_unlock();
 	}

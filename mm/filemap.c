@@ -970,7 +970,11 @@ repeat:
 	page = NULL;
 	pagep = radix_tree_lookup_slot(&mapping->page_tree, offset);
 	if (pagep) {
-		page = radix_tree_deref_slot(pagep);
+		void *pdesc;
+		pdesc = radix_tree_deref_slot(pagep);
+		if (pdesc)
+			page = (struct page*)pdesc;
+		//page = radix_tree_deref_slot(pagep);
 		if (unlikely(!page))
 			goto out;
 		if (radix_tree_exception(page)) {

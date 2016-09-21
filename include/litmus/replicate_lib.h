@@ -6,9 +6,9 @@
 #include <linux/mm_inline.h>
 
 struct shared_lib_page {
-	struct page *p_page;
+	struct page *master_page;
 	struct page *r_page;
-	unsigned long p_pfn;
+	unsigned long master_pfn;
 	unsigned long r_pfn;
 	struct list_head list;
 };
