@@ -408,23 +408,17 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	int expected_count = 1 + extra_count;
 	void **pslot;
 
-//	if (!mapping) {
-		/* Anonymous page without mapping */
-//		if (page_count(page) != expected_count)
-//			return -EAGAIN;
-//		return MIGRATEPAGE_SUCCESS;
-//	}
-
+	BUG_ON(!mapping);
 	TRACE_TASK(current, "page has mapping.\n");
 	spin_lock_irq(&mapping->tree_lock);
 
-	pslot = radix_tree_lookup_slot(&mapping->page_tree,
- 					page_index(page));
+	pslot = radix_tree_lookup_slot(&mapping->page_tree, page_index(page));
 
 	expected_count += 1 + page_has_private(page);
 	
 	TRACE_TASK(current, "page_count(page) = %d, expected_count = %d, page_has_private? %d\n", page_count(page), expected_count, page_has_private(page));
 	
+	expected_count++;
 	if (page_count(page) != expected_count ||
 		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
 		spin_unlock_irq(&mapping->tree_lock);
@@ -463,13 +457,15 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	}
 
 	radix_tree_replace_slot(pslot, newpage);
+	//radix_tree_replace_slot(pslot, page);
 
 	/*
 	 * Drop cache reference from old page by unfreezing
 	 * to one less reference.
 	 * We know this isn't the last reference.
 	 */
-	page_unfreeze_refs(page, expected_count - 1);
+	//page_unfreeze_refs(page, expected_count - 1);
+	page_unfreeze_refs(page, expected_count - 2);
 
 	/*
 	 * If moved to a different zone then also account
@@ -682,7 +678,7 @@ EXPORT_SYMBOL(migrate_page);
 
 int replicate_page(struct address_space *mapping,
 		struct page *newpage, struct page *page,
-		enum migrate_mode mode)
+		enum migrate_mode mode, int has_replica)
 {
 	int rc, extra_count = 0;
 
@@ -693,7 +689,8 @@ int replicate_page(struct address_space *mapping,
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
 
-	migrate_page_copy(newpage, page);
+	if (has_replica == 0)
+		migrate_page_copy(newpage, page);
 	return MIGRATEPAGE_SUCCESS;
 }
 
@@ -757,20 +754,23 @@ int buffer_migrate_page(struct address_space *mapping,
 EXPORT_SYMBOL(buffer_migrate_page);
 #endif
 
+extern struct list_head shared_lib_pages;
+
 int replicate_buffer_page(struct address_space *mapping,
-		struct page *newpage, struct page *page, enum migrate_mode mode)
+		struct page *newpage, struct page *page, enum migrate_mode mode,
+		int has_replica)
 {
 	struct buffer_head *bh, *head;
 	int rc;
 
 	if (!page_has_buffers(page)) {
 		TRACE_TASK(current, "page does not have buffers\n");
-		return replicate_page(mapping, newpage, page, mode);
+		return replicate_page(mapping, newpage, page, mode, has_replica);
 	}
 
 	head = page_buffers(page);
 
-	rc = migrate_page_move_mapping(mapping, newpage, page, head, mode, 0);
+	rc = replicate_page_move_mapping(mapping, newpage, page, head, mode, 0);
 
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
@@ -798,7 +798,8 @@ int replicate_buffer_page(struct address_space *mapping,
 
 	SetPagePrivate(newpage);
 
-	migrate_page_copy(newpage, page);
+	if (has_replica == 0)
+		migrate_page_copy(newpage, page);
 
 	bh = head;
 	do {
@@ -982,7 +983,7 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 		 */
 		//rc = mapping->a_ops->migratepage(mapping,
 		//				newpage, page, mode);
-		rc = replicate_buffer_page(mapping, newpage, page, mode);
+		rc = replicate_buffer_page(mapping, newpage, page, mode, has_replica);
 	}
 	else {
 		TRACE_TASK(current, "fallback function\n");
@@ -992,9 +993,13 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 	if (rc != MIGRATEPAGE_SUCCESS) {
 		newpage->mapping = NULL;
 	} else {
+		if (mem_cgroup_disabled())
+			TRACE_TASK(current, "mem_cgroup_disabled()\n");
 		mem_cgroup_migrate(page, newpage, false);
-		if (page_was_mapped)
+		if (page_was_mapped) {
+			TRACE_TASK(current, "PAGE_WAS_MAPPED = 1\n");
 			remove_migration_ptes(page, newpage);
+		}
 		page->mapping = NULL;
 	}
 
@@ -1378,7 +1383,7 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	rcu_read_lock();
 	list_for_each_entry(lib_page, &shared_lib_pages, list)
 	{
-		if (page_to_pfn(page) == lib_page->p_pfn) {
+		if (page_to_pfn(page) == lib_page->master_pfn) {
 			is_exist_in_psl = 1;
 			break;
 		}
@@ -1386,14 +1391,13 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	rcu_read_unlock();
 	
 	if (is_exist_in_psl)
-		TRACE_TASK(current, "Page %ld exists in PSL list\n", lib_page->p_pfn);
+		TRACE_TASK(current, "Page %ld exists in PSL list\n", lib_page->master_pfn);
 	
 	if (lib_page->r_page == NULL) {
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
 			return -ENOMEM;
-	}
-	else {
+	} else {
 		newpage = lib_page->r_page;
 		has_replica = 1;
 	}
@@ -1409,21 +1413,28 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 			goto out;
 
 	rc = __unmap_and_copy(page, newpage, force, mode, has_replica);
-
+	
+	if (has_replica == 0) {
+		lib_page->r_page = newpage;
+		lib_page->r_pfn = page_to_pfn(newpage);
+	}
+	
 out:
-	if (rc != -EAGAIN) {
+TRACE_TASK(current, "__unmap_and_copy returned %d\n", rc);
+//	if (rc != -EAGAIN) {
 		/*
 		 * A page that has been migrated has all references
 		 * removed and will be freed. A page that has not been
 		 * migrated will have kepts its references and be
 		 * restored.
 		 */
-		list_del(&page->lru);
-		dec_zone_page_state(page, NR_ISOLATED_ANON +
-				page_is_file_cache(page));
-		putback_lru_page(page);
-	}
-
+//		list_del(&page->lru);
+//		dec_zone_page_state(page, NR_ISOLATED_ANON +
+//				page_is_file_cache(page));
+//		putback_lru_page(page);
+//	}
+	
+TRACE_TASK(current, "old page freed\n");
 	/*
 	 * If migration was not successful and there's a freeing callback, use
 	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed
