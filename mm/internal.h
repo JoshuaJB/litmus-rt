@@ -13,6 +13,34 @@
 
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/pagemap.h>
+
+/*
+ * Pagecache replication
+ */
+static inline int pcache_replicated(struct address_space *mapping, unsigned long offset)
+{
+	return radix_tree_tag_get(&mapping->page_tree, offset,
+					PAGECACHE_TAG_REPLICATED);
+}
+
+extern int reclaim_replicated_page(struct address_space *mapping,
+		struct page *page);
+extern struct page *get_unreplicated_page(struct address_space *mapping,
+				unsigned long offset, struct page *page);
+extern void get_unreplicated_pages(struct address_space *mapping,
+				struct page **pages, int nr);
+extern struct page *find_get_page_readonly(struct address_space *mapping,
+						unsigned long offset);
+extern int is_pcache_desc(void *ptr);
+extern struct pcache_desc *ptr_to_pcache_desc(void *ptr);
+extern void *pcache_desc_to_ptr(struct pcache_desc *pcd);
+extern void unreplicate_pcache(struct address_space *mapping, unsigned long offset);
+
+struct page *get_unreplicated_page_fault(struct page *page);
+
+/* End Pagecache replication */
+
 
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 		unsigned long floor, unsigned long ceiling);

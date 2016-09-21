@@ -970,13 +970,23 @@ repeat:
 	page = NULL;
 	pagep = radix_tree_lookup_slot(&mapping->page_tree, offset);
 	if (pagep) {
-		void *pdesc;
-		pdesc = radix_tree_deref_slot(pagep);
-		if (pdesc)
-			page = (struct page*)pdesc;
-		//page = radix_tree_deref_slot(pagep);
+		page = radix_tree_deref_slot(pagep);
 		if (unlikely(!page))
 			goto out;
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+			
+			unreplicate_pcache(mapping, page->index);
+
+			goto out;
+		}
+			
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				goto repeat;
@@ -1175,6 +1185,21 @@ repeat:
 		page = radix_tree_deref_slot(slot);
 		if (unlikely(!page))
 			continue;
+		
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+			
+			unreplicate_pcache(mapping, page->index);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				goto restart;
@@ -1238,6 +1263,20 @@ repeat:
 		if (unlikely(!page))
 			continue;
 
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+			
+			unreplicate_pcache(mapping, page->index);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1264,7 +1303,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		pages[ret] = page;
 		if (++ret == nr_pages)
 			break;
@@ -1306,6 +1345,21 @@ repeat:
 		if (unlikely(!page))
 			break;
 
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			if (!page_cache_get_speculative(page))
+				goto repeat;
+			
+			unreplicate_pcache(mapping, page->index);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1331,7 +1385,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		/*
 		 * must check mapping and index after taking the ref.
 		 * otherwise we can get both false positives and false
@@ -1382,6 +1436,10 @@ repeat:
 		if (unlikely(!page))
 			continue;
 
+		if (is_pcache_desc(page)) {
+			BUG();
+		}
+			
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*

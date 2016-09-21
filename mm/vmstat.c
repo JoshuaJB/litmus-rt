@@ -710,6 +710,7 @@ const char * const vmstat_text[] = {
 	"nr_file_pages",
 	"nr_dirty",
 	"nr_writeback",
+	"nr_repl_pages",
 	"nr_slab_reclaimable",
 	"nr_slab_unreclaimable",
 	"nr_page_table_pages",

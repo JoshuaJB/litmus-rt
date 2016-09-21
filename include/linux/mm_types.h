@@ -14,6 +14,7 @@
 #include <linux/page-flags-layout.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
+#include <linux/radix-tree.h>
 
 #ifndef AT_VECTOR_SIZE_ARCH
 #define AT_VECTOR_SIZE_ARCH 0
@@ -544,5 +545,11 @@ enum tlb_flush_reason {
 typedef struct {
 	unsigned long val;
 } swp_entry_t;
+
+struct pcache_desc {
+	struct page *master;
+	cpumask_t cpus_present;
+	struct radix_tree_root page_tree;
+};
 
 #endif /* _LINUX_MM_TYPES_H */

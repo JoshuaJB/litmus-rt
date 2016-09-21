@@ -504,7 +504,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			}
 		}
 	}
-	
+/*	
 	if (!list_empty(&task_shared_pagelist)) {
 		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
@@ -513,7 +513,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			putback_movable_pages(&task_shared_pagelist);
 		}
 	}
-	
+*/	
 	/* handle sigpage and litmus ctrl_page */
 /*	vma_itr = current->mm->mmap;
 	while (vma_itr != NULL) {
