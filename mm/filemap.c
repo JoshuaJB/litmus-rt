@@ -36,6 +36,9 @@
 #include <linux/rmap.h>
 #include "internal.h"
 
+#include <litmus/litmus.h>
+#include <litmus/mc2_common.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
@@ -1547,7 +1550,13 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 
 		cond_resched();
 find_page:
-		page = find_get_page(mapping, index);
+		if (tsk_mc2_data(current)) {
+			printk(KERN_INFO "RT  Task file_read1\n");
+			page = find_get_page_readonly(mapping, index);
+		}
+		else
+			page = find_get_page(mapping, index);
+		
 		if (!page) {
 			page_cache_sync_readahead(mapping,
 					ra, filp,
@@ -1584,7 +1593,6 @@ page_ok:
 		 * part of the page is not copied back to userspace (unless
 		 * another truncate extends the file - this is desired though).
 		 */
-
 		isize = i_size_read(inode);
 		end_index = (isize - 1) >> PAGE_CACHE_SHIFT;
 		if (unlikely(!isize || index > end_index)) {
@@ -1602,7 +1610,16 @@ page_ok:
 			}
 		}
 		nr = nr - offset;
-
+	
+		if (tsk_mc2_data(current)) {
+			printk(KERN_INFO "RT  Task file_read2\n");
+			page_cache_release(page);
+			page = find_get_page_readonly(mapping, index);
+			if (!page) {
+				BUG();
+			}
+		}
+		
 		/* If users can be writing to this page using arbitrary
 		 * virtual addresses, take care about potential aliasing
 		 * before reading the page on the kernel side.
@@ -1943,7 +1960,13 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	/*
 	 * Do we have something in the page cache already?
 	 */
-	page = find_get_page(mapping, offset);
+	if (tsk_mc2_data(current)) {
+		printk(KERN_INFO "RT  Task filemap_fault1\n");
+		page = find_get_page_readonly(mapping, offset);
+	}
+	else
+		page = find_get_page(mapping, offset);
+	
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*
 		 * We found the page, so try async readahead before
@@ -1957,7 +1980,13 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
 retry_find:
-		page = find_get_page(mapping, offset);
+		if (tsk_mc2_data(current)) {
+			printk(KERN_INFO "RT  Task filemap_fault2\n");
+			page = find_get_page_readonly(mapping, offset);
+		}
+		else
+			page = find_get_page(mapping, offset);
+		
 		if (!page)
 			goto no_cached_page;
 	}
@@ -2065,6 +2094,22 @@ repeat:
 		page = radix_tree_deref_slot(slot);
 		if (unlikely(!page))
 			goto next;
+		
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			if (!page_cache_get_speculative(page))
+				goto repeat;
+			
+			unreplicate_pcache(mapping, page->index);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				break;
@@ -2080,7 +2125,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		if (!PageUptodate(page) ||
 				PageReadahead(page) ||
 				PageHWPoison(page))

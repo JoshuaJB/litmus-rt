@@ -410,7 +410,7 @@ struct page *find_get_page_readonly(struct address_space *mapping,
 	page = NULL;
 retry:
 	spin_lock_irq(&mapping->tree_lock);
-//	nid = numa_node_id();
+
 	if (!tsk_rt(current))
 		goto out;
 	
