@@ -2235,6 +2235,8 @@ static int wp_page_shared(struct mm_struct *mm, struct vm_area_struct *vma,
 		int tmp;
 
 		pte_unmap_unlock(page_table, ptl);
+		old_page = get_unreplicated_page_fault(old_page);
+		
 		tmp = do_page_mkwrite(vma, old_page, address);
 		if (unlikely(!tmp || (tmp &
 				      (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {

@@ -341,7 +341,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 	local = local_cpu_state() == state;
 
 	raw_spin_lock(&_global_env.lock);
-		
+//	TRACE("P%d acquired GE lock L344\n");	
 	list_for_each_entry_safe(event, next, &_global_env.next_events, list) {
 		/* If the event time is already passed, we call schedule() on
 		   the lowest priority cpu */
@@ -376,6 +376,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 	/* Must drop state lock before calling into hrtimer_start(), which
 	 * may raise a softirq, which in turn may wake ksoftirqd. */
 	raw_spin_unlock(&_global_env.lock);
+//	TRACE("P%d releases GE lock L379\n");	
 	raw_spin_unlock(&state->lock);
 		
 	if (update <= now || reschedule[state->cpu]) {
@@ -600,6 +601,7 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 	}
 
 	raw_spin_lock(&_global_env.lock);
+//	TRACE("P%d acquired GE lock L604\n");	
 	global_schedule_now = gmp_update_time(&_global_env, now);
 	
 	BUG_ON(global_schedule_now < 0 || global_schedule_now > 4);
@@ -619,7 +621,7 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 		}
 	} 
 	raw_spin_unlock(&_global_env.lock);
-	
+//	TRACE("P%d releases GE lock L624\n");	
 	raw_spin_unlock_irqrestore(&state->lock, flags);
 	//raw_spin_unlock_irqrestore(&_global_env.lock, flags);
 	
@@ -679,6 +681,7 @@ static long mc2_complete_job(void)
 			state = local_cpu_state();		
 			raw_spin_lock(&state->lock);
 			raw_spin_lock(&_global_env.lock);
+//			TRACE("P%d acquired GE lock L684\n");	
 			res = gmp_find_by_id(&_global_env, tinfo->mc2_param.res_id);
 			_global_env.env.time_zero = tsk_rt(current)->sporadic_release_time;
 		}
@@ -705,8 +708,10 @@ static long mc2_complete_job(void)
 		//if (lv < CRIT_LEVEL_C)
 //			raw_spin_unlock(&state->lock);
 		//else 
-		if (lv == CRIT_LEVEL_C)
+		if (lv == CRIT_LEVEL_C) {
 			raw_spin_unlock(&_global_env.lock);
+//			TRACE("P%d releases GE lock L713\n");	
+		}
 		
 		raw_spin_unlock(&state->lock);
 		local_irq_restore(flags);
@@ -991,7 +996,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 		}
 	}
 	
-	if (to_schedule != 0) {
+	if (to_schedule > 0) {
 		raw_spin_lock(&_global_env.lock);
 		while (to_schedule--) {
 			int cpu = get_lowest_prio_cpu(0);
@@ -1078,9 +1083,11 @@ static void mc2_task_resume(struct task_struct  *tsk)
 			task_arrives(state, tsk);
 		} else {
 			raw_spin_lock(&_global_env.lock);
+//			TRACE("P%d acquired GE lock L1086\n");	
 			gmp_update_time(&_global_env, litmus_clock());
 			task_arrives(state, tsk);
 			raw_spin_unlock(&_global_env.lock);
+//			TRACE("P%d releases GE lock L1090\n");	
 		}
 			
 		/* 9/20/2015 fix 
