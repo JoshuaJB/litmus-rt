@@ -983,7 +983,7 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 		 */
 		//rc = mapping->a_ops->migratepage(mapping,
 		//				newpage, page, mode);
-		rc = replicate_buffer_page(mapping, newpage, page, mode, has_replica);
+		rc = replicate_page(mapping, newpage, page, mode, has_replica);
 	}
 	else {
 		TRACE_TASK(current, "fallback function\n");
@@ -1434,7 +1434,7 @@ TRACE_TASK(current, "__unmap_and_copy returned %d\n", rc);
 //		putback_lru_page(page);
 //	}
 	
-TRACE_TASK(current, "old page freed\n");
+//TRACE_TASK(current, "old page freed\n");
 	/*
 	 * If migration was not successful and there's a freeing callback, use
 	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed
