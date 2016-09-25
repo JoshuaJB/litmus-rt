@@ -440,10 +440,16 @@ asmlinkage long sys_set_page_color(int cpu)
 				}
 				
 				/* add to task_shared_pagelist */
-				list_add_tail(&old_page->lru, &task_shared_pagelist);
-				
-				nr_shared_pages++;
-				TRACE_TASK(current, "SHARED\n");
+				ret = isolate_lru_page(old_page);
+				if (!ret) {
+					list_add_tail(&old_page->lru, &task_shared_pagelist);
+					inc_zone_page_state(old_page, NR_ISOLATED_ANON + !PageSwapBacked(old_page));
+					nr_shared_pages++;
+					TRACE_TASK(current, "SHARED isolate_lur_page success\n");
+				} else {
+					TRACE_TASK(current, "SHARED isolate_lru_page failed\n");
+				}
+				put_page(old_page);
 			}
 			else {
 				ret = isolate_lru_page(old_page);
@@ -489,7 +495,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			putback_movable_pages(&pagelist);
 		}
 	}
-	
+/*	
 	{
 		struct list_head *pos, *q;
 		list_for_each_safe(pos, q, &task_shared_pagelist) {
@@ -504,7 +510,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			}
 		}
 	}
-	
+*/	
 	if (!list_empty(&task_shared_pagelist)) {
 		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
@@ -590,12 +596,14 @@ asmlinkage long sys_test_call(unsigned int param)
 		down_read(&current->mm->mmap_sem);
 		vma_itr = current->mm->mmap;
 		while (vma_itr != NULL) {
-			printk(KERN_INFO "--------------------------------------------\n");
-			printk(KERN_INFO "vm_start : %lx\n", vma_itr->vm_start);
-			printk(KERN_INFO "vm_end   : %lx\n", vma_itr->vm_end);
-			printk(KERN_INFO "vm_flags : %lx\n", vma_itr->vm_flags);
-			printk(KERN_INFO "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
-			printk(KERN_INFO "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
+			int i, num_pages;
+			struct page* old_page;
+			TRACE_TASK(current, "--------------------------------------------\n");
+			TRACE_TASK(current, "vm_start : %lx\n", vma_itr->vm_start);
+			TRACE_TASK(current, "vm_end   : %lx\n", vma_itr->vm_end);
+			TRACE_TASK(current, "vm_flags : %lx\n", vma_itr->vm_flags);
+			TRACE_TASK(current, "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
+			TRACE_TASK(current, "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
 	/*		if (vma_itr->vm_file) {
 				struct file *fp = vma_itr->vm_file;
 				unsigned long fcount = atomic_long_read(&(fp->f_count));
@@ -606,14 +614,28 @@ asmlinkage long sys_test_call(unsigned int param)
 			}
 			printk(KERN_INFO "vm_prot2 : %x\n", pgprot_val(vma_itr->vm_page_prot));
 	*/		
+			num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
+			for (i = 0; i < num_pages; i++) {
+				old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
+				
+				if (IS_ERR(old_page))
+					continue;
+				if (!old_page)
+					continue;
+
+				if (PageReserved(old_page)) {
+					TRACE("Reserved Page!\n");
+					put_page(old_page);
+					continue;
+				}
+				
+				TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
+				put_page(old_page);
+			}
 			vma_itr = vma_itr->vm_next;
 		}
 		printk(KERN_INFO "--------------------------------------------\n");
 		up_read(&current->mm->mmap_sem);
-		
-		local_irq_save(flags);
-		l2c310_flush_all();
-		local_irq_restore(flags);
 	}
 	else if (param == 1) {
 		int i;

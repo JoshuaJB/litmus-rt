@@ -36,6 +36,9 @@
 #include <linux/rmap.h>
 #include "internal.h"
 
+#include <litmus/litmus.h>
+#include <litmus/mc2_common.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
@@ -1885,6 +1888,8 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	/*
 	 * Do we have something in the page cache already?
 	 */
+if (is_realtime(current))
+	printk("FILEMAP_FAULT %ld\n", vma->vm_start);
 	page = find_get_page(mapping, offset);
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*

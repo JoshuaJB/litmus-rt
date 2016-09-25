@@ -418,7 +418,6 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	
 	TRACE_TASK(current, "page_count(page) = %d, expected_count = %d, page_has_private? %d\n", page_count(page), expected_count, page_has_private(page));
 	
-	expected_count++;
 	if (page_count(page) != expected_count ||
 		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
 		spin_unlock_irq(&mapping->tree_lock);
@@ -464,9 +463,8 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	 * to one less reference.
 	 * We know this isn't the last reference.
 	 */
-	//page_unfreeze_refs(page, expected_count - 1);
-	page_unfreeze_refs(page, expected_count - 2);
-
+	page_unfreeze_refs(page, expected_count - 1);
+	
 	/*
 	 * If moved to a different zone then also account
 	 * the page for that zone. Other VM counters will be
@@ -1184,6 +1182,8 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 		 * the retry loop is too short and in the sync-light case,
 		 * the overhead of stalling is too much
 		 */
+		BUG();
+		/*
 		if (mode != MIGRATE_SYNC) {
 			rc = -EBUSY;
 			goto out_unlock;
@@ -1191,6 +1191,7 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 		if (!force)
 			goto out_unlock;
 		wait_on_page_writeback(page);
+		*/
 	}
 	/*
 	 * By try_to_unmap(), page->mapcount goes down to 0 here. In this case,
@@ -1683,7 +1684,8 @@ int replicate_pages(struct list_head *from, new_page_t get_new_page,
 
 		list_for_each_entry_safe(page, page2, from, lru) {
 			cond_resched();
-
+			
+			TRACE_TASK(current, "PageAnon=%d\n", PageAnon(page));
 			rc = unmap_and_copy(get_new_page, put_new_page, private, page, pass > 2, mode);
 			TRACE_TASK(current, "rc = %d\n", rc);
 
