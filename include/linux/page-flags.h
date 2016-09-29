@@ -97,6 +97,7 @@ enum pageflags {
 	PG_reclaim,		/* To be reclaimed asap */
 	PG_swapbacked,		/* Page is backed by RAM/swap */
 	PG_unevictable,		/* Page is "unevictable"  */
+	PG_replicated,		/* Page is replicated pagecache */
 #ifdef CONFIG_MMU
 	PG_mlocked,		/* Page is vma mlocked */
 #endif
@@ -288,6 +289,11 @@ TESTSCFLAG(HWPoison, hwpoison)
 PAGEFLAG_FALSE(HWPoison)
 #define __PG_HWPOISON 0
 #endif
+
+#define PageReplicated(page)	test_bit(PG_replicated, &(page)->flags)
+#define __SetPageReplicated(page) do { BUG_ON(PageDirty(page) || PageWriteback(page)); __set_bit(PG_replicated, &(page)->flags); } while (0) 
+#define SetPageReplicated(page)	do { BUG_ON(PageDirty(page) || PageWriteback(page)); set_bit(PG_replicated, &(page)->flags); } while (0)
+#define ClearPageReplicated(page) clear_bit(PG_replicated, &(page)->flags)
 
 /*
  * On an anonymous page mapped into a user virtual memory area,

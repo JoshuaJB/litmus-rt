@@ -708,6 +708,7 @@ const char * const vmstat_text[] = {
 	"nr_anon_pages",
 	"nr_mapped",
 	"nr_file_pages",
+	"nr_repl_pages",
 	"nr_dirty",
 	"nr_writeback",
 	"nr_slab_reclaimable",
@@ -760,6 +761,9 @@ const char * const vmstat_text[] = {
 	"pgfault",
 	"pgmajfault",
 
+	"pgreplicated",
+	"pgreplicazap",
+	
 	TEXTS_FOR_ZONES("pgrefill")
 	TEXTS_FOR_ZONES("pgsteal_kswapd")
 	TEXTS_FOR_ZONES("pgsteal_direct")

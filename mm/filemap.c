@@ -973,13 +973,21 @@ repeat:
 	page = NULL;
 	pagep = radix_tree_lookup_slot(&mapping->page_tree, offset);
 	if (pagep) {
-		void *pdesc;
-		pdesc = radix_tree_deref_slot(pagep);
-		if (pdesc)
-			page = (struct page*)pdesc;
-		//page = radix_tree_deref_slot(pagep);
+		page = radix_tree_deref_slot(pagep);
 		if (unlikely(!page))
 			goto out;
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+printk(KERN_INFO "PCACHE_DESC\n");
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+			
+			unreplicate_pcache(mapping, page->index, 0);
+			
+			goto out;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				goto repeat;
@@ -1178,6 +1186,20 @@ repeat:
 		page = radix_tree_deref_slot(slot);
 		if (unlikely(!page))
 			continue;
+		
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+			printk(KERN_INFO "PCACHE_DESC\n");
+			
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+			
+			unreplicate_pcache(mapping, page->index, 0);
+			
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				goto restart;
@@ -1241,6 +1263,20 @@ repeat:
 		if (unlikely(!page))
 			continue;
 
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+			printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+
+			unreplicate_pcache(mapping, page->index, 0);
+
+			goto export;
+		}
+
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1268,6 +1304,7 @@ repeat:
 			goto repeat;
 		}
 
+export:
 		pages[ret] = page;
 		if (++ret == nr_pages)
 			break;
@@ -1309,6 +1346,20 @@ repeat:
 		if (unlikely(!page))
 			break;
 
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+			printk(KERN_INFO "PCACHE_DESC\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+
+			unreplicate_pcache(mapping, page->index, 0);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1334,7 +1385,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		/*
 		 * must check mapping and index after taking the ref.
 		 * otherwise we can get both false positives and false
@@ -1385,6 +1436,20 @@ repeat:
 		if (unlikely(!page))
 			continue;
 
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+			printk(KERN_INFO "PCACHE_DESC BUG!!!!!!!!!!\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			page_cache_get_speculative(page);
+
+			unreplicate_pcache(mapping, page->index, 0);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page)) {
 				/*
@@ -1416,7 +1481,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		pages[ret] = page;
 		if (++ret == nr_pages)
 			break;
@@ -1492,7 +1557,11 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 
 		cond_resched();
 find_page:
-		page = find_get_page(mapping, index);
+		if (is_realtime(current))
+			page = find_get_page_readonly(mapping, index);
+		else
+			page = find_get_page(mapping, index);
+		
 		if (!page) {
 			page_cache_sync_readahead(mapping,
 					ra, filp,
@@ -1644,7 +1713,8 @@ readpage:
 			unlock_page(page);
 		}
 
-		goto page_ok;
+		page_cache_release(page);
+		goto find_page;
 
 readpage_error:
 		/* UHHUH! A synchronous read error occurred. Report it */
@@ -1888,9 +1958,11 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	/*
 	 * Do we have something in the page cache already?
 	 */
-if (is_realtime(current))
-	printk("FILEMAP_FAULT %ld\n", vma->vm_start);
-	page = find_get_page(mapping, offset);
+	if ((vmf->flags & FAULT_FLAG_WRITE) || !is_realtime(current))
+		page = find_get_page(mapping, offset);
+	else
+		page = find_get_page_readonly(mapping, offset);
+	
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*
 		 * We found the page, so try async readahead before
@@ -1904,7 +1976,10 @@ if (is_realtime(current))
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
 retry_find:
-		page = find_get_page(mapping, offset);
+		if ((vmf->flags & FAULT_FLAG_WRITE) || !is_realtime(current))
+			page = find_get_page(mapping, offset);
+		else
+			page = find_get_page_readonly(mapping, offset);
 		if (!page)
 			goto no_cached_page;
 	}
@@ -2012,6 +2087,22 @@ repeat:
 		page = radix_tree_deref_slot(slot);
 		if (unlikely(!page))
 			goto next;
+		
+		if (is_pcache_desc(page)) {
+			struct pcache_desc *pcd;
+
+printk(KERN_INFO "PCACHE_DESC FILE_MAP_PAGES\n");
+
+			pcd = ptr_to_pcache_desc(page);
+			page = pcd->master;
+			if (!page_cache_get_speculative(page))
+				goto repeat;
+			
+			//unreplicate_pcache(mapping, page->index, 0);
+
+			goto export;
+		}
+		
 		if (radix_tree_exception(page)) {
 			if (radix_tree_deref_retry(page))
 				break;
@@ -2027,7 +2118,7 @@ repeat:
 			page_cache_release(page);
 			goto repeat;
 		}
-
+export:
 		if (!PageUptodate(page) ||
 				PageReadahead(page) ||
 				PageHWPoison(page))

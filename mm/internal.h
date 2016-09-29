@@ -433,4 +433,14 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 #define ALLOC_CMA		0x80 /* allow allocations from CMA areas */
 #define ALLOC_FAIR		0x100 /* fair zone allocation */
 
+extern int reclaim_replicated_page(struct address_space *mapping,
+		struct page *page);
+extern struct page *find_get_page_readonly(struct address_space *mapping,
+						unsigned long offset);
+extern int is_pcache_desc(void *ptr);
+extern struct pcache_desc *ptr_to_pcache_desc(void *ptr);
+extern void *pcache_desc_to_ptr(struct pcache_desc *pcd);
+extern void unreplicate_pcache(struct address_space *mapping, unsigned long offset, int locked);
+int page_write_fault_retry(struct page *page);
+
 #endif	/* __MM_INTERNAL_H */

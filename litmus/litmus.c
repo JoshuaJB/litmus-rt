@@ -571,6 +571,12 @@ asmlinkage long sys_set_page_color(int cpu)
 				put_page(old_page);
 				continue;
 			}
+			
+			if (page_count(old_page) - page_mapcount(old_page) == 1) {
+				put_page(old_page);
+				continue;
+			}
+			
 			TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
 			put_page(old_page);
 		}
