@@ -646,6 +646,63 @@ void migrate_page_copy(struct page *newpage, struct page *page)
 		end_page_writeback(newpage);
 }
 
+/*
+ * Copy the page to its new location
+ */
+void replicate_page_copy(struct page *newpage, struct page *page)
+{
+	if (PageHuge(page) || PageTransHuge(page))
+		copy_huge_page(newpage, page);
+	else
+		copy_highpage(newpage, page);
+
+	if (PageError(page))
+		SetPageError(newpage);
+	if (PageReferenced(page))
+		SetPageReferenced(newpage);
+	if (PageUptodate(page))
+		SetPageUptodate(newpage);
+	if (PageActive(page)) {
+		VM_BUG_ON_PAGE(PageUnevictable(page), page);
+		SetPageActive(newpage);
+	} else if (PageUnevictable(page))
+		SetPageUnevictable(newpage);
+	if (PageChecked(page))
+		SetPageChecked(newpage);
+	if (PageMappedToDisk(page))
+		SetPageMappedToDisk(newpage);
+
+	if (PageDirty(page)) {
+		BUG();
+ 	}
+
+	/*
+	 * Copy NUMA information to the new page, to prevent over-eager
+	 * future migrations of this same page.
+	 */
+#ifdef CONFIG_NUMA_BALANCING
+	BUG();
+#endif
+
+	if (PageMlocked(page)) {
+		unsigned long flags;
+		int nr_pages = hpage_nr_pages(page);
+		
+		local_irq_save(flags);
+		SetPageMlocked(newpage);
+		__mod_zone_page_state(page_zone(newpage), NR_MLOCK, nr_pages);
+		local_irq_restore(flags);
+	}
+
+	/*
+	 * If any waiters have accumulated on the new page then
+	 * wake them up.
+	 */
+	if (PageWriteback(newpage))
+		end_page_writeback(newpage);
+	TRACE_TASK(current, "replicate_page_copy done!\n");
+}
+
 /************************************************************
  *                    Migration functions
  ***********************************************************/
@@ -688,7 +745,7 @@ int replicate_page(struct address_space *mapping,
 		return rc;
 
 	if (has_replica == 0)
-		migrate_page_copy(newpage, page);
+		replicate_page_copy(newpage, page);
 	return MIGRATEPAGE_SUCCESS;
 }
 
@@ -753,62 +810,6 @@ EXPORT_SYMBOL(buffer_migrate_page);
 #endif
 
 extern struct list_head shared_lib_pages;
-
-int replicate_buffer_page(struct address_space *mapping,
-		struct page *newpage, struct page *page, enum migrate_mode mode,
-		int has_replica)
-{
-	struct buffer_head *bh, *head;
-	int rc;
-
-	if (!page_has_buffers(page)) {
-		TRACE_TASK(current, "page does not have buffers\n");
-		return replicate_page(mapping, newpage, page, mode, has_replica);
-	}
-
-	head = page_buffers(page);
-
-	rc = replicate_page_move_mapping(mapping, newpage, page, head, mode, 0);
-
-	if (rc != MIGRATEPAGE_SUCCESS)
-		return rc;
-
-	/*
-	 * In the async case, migrate_page_move_mapping locked the buffers
-	 * with an IRQ-safe spinlock held. In the sync case, the buffers
-	 * need to be locked now
-	 */
-	if (mode != MIGRATE_ASYNC)
-		BUG_ON(!buffer_migrate_lock_buffers(head, mode));
-
-	ClearPagePrivate(page);
-	set_page_private(newpage, page_private(page));
-	set_page_private(page, 0);
-	put_page(page);
-	get_page(newpage);
-
-	bh = head;
-	do {
-		set_bh_page(bh, newpage, bh_offset(bh));
-		bh = bh->b_this_page;
-
-	} while (bh != head);
-
-	SetPagePrivate(newpage);
-
-	if (has_replica == 0)
-		migrate_page_copy(newpage, page);
-
-	bh = head;
-	do {
-		unlock_buffer(bh);
- 		put_bh(bh);
-		bh = bh->b_this_page;
-
-	} while (bh != head);
-
-	return MIGRATEPAGE_SUCCESS;
-}
 
 /*
  * Writeback a page to clean the dirty state
@@ -991,14 +992,11 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 	if (rc != MIGRATEPAGE_SUCCESS) {
 		newpage->mapping = NULL;
 	} else {
-		if (mem_cgroup_disabled())
-			TRACE_TASK(current, "mem_cgroup_disabled()\n");
-		mem_cgroup_migrate(page, newpage, false);
 		if (page_was_mapped) {
 			TRACE_TASK(current, "PAGE_WAS_MAPPED = 1\n");
 			remove_migration_ptes(page, newpage);
 		}
-		page->mapping = NULL;
+		//page->mapping = NULL;
 	}
 
 	unlock_page(newpage);
@@ -1202,16 +1200,22 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 	 * just care Anon page here.
 	 */
 	if (PageAnon(page) && !PageKsm(page)) {
+		printk(KERN_INFO "ANON but not KSM\n");
+		BUG();
 		/*
 		 * Only page_lock_anon_vma_read() understands the subtleties of
 		 * getting a hold on an anon_vma from outside one of its mms.
 		 */
+/*
 		anon_vma = page_get_anon_vma(page);
 		if (anon_vma) {
+*/
 			/*
 			 * Anon page
 			 */
+/*
 		} else if (PageSwapCache(page)) {
+*/
 			/*
 			 * We cannot be sure that the anon_vma of an unmapped
 			 * swapcache page is safe to use because we don't
@@ -1224,12 +1228,14 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 			 * migrated but are not remapped when migration
 			 * completes
 			 */
-		} else {
+/*		} else {
 			goto out_unlock;
 		}
+*/		
 	}
 
 	if (unlikely(isolated_balloon_page(page))) {
+		BUG();
 		/*
 		 * A ballooned page does not need any special attention from
 		 * physical to virtual reverse mapping procedures.
@@ -1267,6 +1273,7 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 		try_to_unmap(page,
 			TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS);
 		page_was_mapped = 1;
+		TRACE_TASK(current, "Page %d unmapped from all PTEs\n", page_to_pfn(page));
 	}
 
 skip_unmap:
