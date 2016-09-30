@@ -7,9 +7,9 @@
 
 struct shared_lib_page {
 	struct page *master_page;
-	struct page *r_page;
+	struct page *r_page[NR_CPUS];
 	unsigned long int master_pfn;
-	unsigned long int r_pfn;
+	unsigned long int r_pfn[NR_CPUS];
 	struct list_head list;
 };
 

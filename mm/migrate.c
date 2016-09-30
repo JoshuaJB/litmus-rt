@@ -1398,29 +1398,29 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	int *result = NULL;
 	struct page *newpage;
 	struct shared_lib_page *lib_page;
-	int is_exist_in_psl = 0, has_replica = 0;
-
+	int master_exist_in_psl = 0, has_replica = 0, cpu = private/2;
+	
 	/* check if this page is in the PSL list */
 	rcu_read_lock();
 	list_for_each_entry(lib_page, &shared_lib_pages, list)
 	{
 		if (page_to_pfn(page) == lib_page->master_pfn) {
-			is_exist_in_psl = 1;
+			master_exist_in_psl = 1;
 			break;
 		}
 	}
 	rcu_read_unlock();
 	
-	if (is_exist_in_psl)
-		TRACE_TASK(current, "Page %x exists in PSL list\n", lib_page->master_pfn);
+	if (master_exist_in_psl)
+		TRACE_TASK(current, "Page %05lx exists in PSL list\n", lib_page->master_pfn);
 	
-	if (lib_page->r_page == NULL) {
+	if (lib_page->r_page[cpu] == NULL) {
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
 			return -ENOMEM;
 		//printk(KERN_ERR "Page %lx allocated\n", page_to_pfn(newpage));
 	} else {
-		newpage = lib_page->r_page;
+		newpage = lib_page->r_page[cpu];
 		has_replica = 1;
 		//printk(KERN_ERR "Page %lx found\n", page_to_pfn(newpage));
 	}
@@ -1438,8 +1438,8 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	rc = __unmap_and_copy(page, newpage, force, mode, has_replica);
 	
 	if (has_replica == 0 && rc == MIGRATEPAGE_SUCCESS) {
-		lib_page->r_page = newpage;
-		lib_page->r_pfn = page_to_pfn(newpage);
+		lib_page->r_page[cpu] = newpage;
+		lib_page->r_pfn[cpu] = page_to_pfn(newpage);
 	}
 	
 out:

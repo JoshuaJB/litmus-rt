@@ -429,11 +429,16 @@ asmlinkage long sys_set_page_color(int cpu)
 				rcu_read_unlock();
 	
 				if (is_exist == 0) {
+					int cpu_i;
 					lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
 					lib_page->master_page = old_page;
-					lib_page->r_page = NULL;
+					//lib_page->r_page = NULL;
 					lib_page->master_pfn = page_to_pfn(old_page);
-					lib_page->r_pfn = INVALID_PFN;
+					//lib_page->r_pfn = INVALID_PFN;
+					for (cpu_i = 0; cpu_i < NR_CPUS; cpu_i++) {
+						lib_page->r_page[cpu_i] = NULL;
+						lib_page->r_pfn[cpu_i] = INVALID_PFN;
+					}
 					list_add_tail(&lib_page->list, &shared_lib_pages);
 					TRACE_TASK(current, "NEW PAGE %05lx ADDED.\n", lib_page->master_pfn);
 				}
@@ -551,7 +556,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		rcu_read_lock();
 		list_for_each_entry(lpage, &shared_lib_pages, list)
 		{
-			TRACE_TASK(current, "master_PFN = %05lx r_PFN = %05lx PageSwapCache=%d\n", lpage->master_pfn, lpage->r_pfn, PageSwapCache(lpage->master_page));
+			TRACE_TASK(current, "master_PFN = %05lx r_PFN = %05lx, %05lx, %05lx, %05lx\n", lpage->master_pfn, lpage->r_pfn[0], lpage->r_pfn[1], lpage->r_pfn[2], lpage->r_pfn[3]);
 		}
 		rcu_read_unlock();
 	}
