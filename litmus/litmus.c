@@ -407,10 +407,12 @@ asmlinkage long sys_set_page_color(int cpu)
 				continue;
 			}
 			
-			TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
+			TRACE_TASK(current, "addr: %08x, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
 			pages_in_vma++;
-			
+
+// for simple debug			
 			if (page_count(old_page) > 2 && vma_itr->vm_file != NULL && !(vma_itr->vm_flags&VM_WRITE)) {
+			//if (page_count(old_page) < 10 && page_count(old_page) > 3 && vma_itr->vm_file != NULL && !(vma_itr->vm_flags&VM_WRITE)) {
 				struct shared_lib_page *lib_page;
 				int is_exist = 0;
 
@@ -433,10 +435,10 @@ asmlinkage long sys_set_page_color(int cpu)
 					lib_page->master_pfn = page_to_pfn(old_page);
 					lib_page->r_pfn = INVALID_PFN;
 					list_add_tail(&lib_page->list, &shared_lib_pages);
-					TRACE_TASK(current, "NEW PAGE %ld ADDED.\n", lib_page->master_pfn);
+					TRACE_TASK(current, "NEW PAGE %05lx ADDED.\n", lib_page->master_pfn);
 				}
 				else {
-					TRACE_TASK(current, "FOUND PAGE %ld in the list.\n", lib_page->master_pfn);
+					TRACE_TASK(current, "FOUND PAGE %05lx in the list.\n", lib_page->master_pfn);
 				}
 				
 				/* add to task_shared_pagelist */
@@ -445,7 +447,7 @@ asmlinkage long sys_set_page_color(int cpu)
 					list_add_tail(&old_page->lru, &task_shared_pagelist);
 					inc_zone_page_state(old_page, NR_ISOLATED_ANON + !PageSwapBacked(old_page));
 					nr_shared_pages++;
-					TRACE_TASK(current, "SHARED isolate_lur_page success\n");
+					TRACE_TASK(current, "SHARED isolate_lru_page success\n");
 				} else {
 					TRACE_TASK(current, "SHARED isolate_lru_page failed\n");
 				}
@@ -459,7 +461,6 @@ asmlinkage long sys_set_page_color(int cpu)
 					nr_pages++;
 				} else {
 					TRACE_TASK(current, "isolate_lru_page failed\n");
-					TRACE_TASK(current, "page_lru = %d PageLRU = %d\n", page_lru(old_page), PageLRU(old_page));
 					nr_failed++;
 				}
 				//printk(KERN_INFO "PRIVATE _mapcount = %d, _count = %d\n", page_mapcount(old_page), page_count(old_page));
@@ -546,7 +547,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		rcu_read_lock();
 		list_for_each_entry(lpage, &shared_lib_pages, list)
 		{
-			TRACE_TASK(current, "master_PFN = %ld r_PFN = %ld PageSwapCache=%d\n", lpage->master_pfn, lpage->r_pfn, PageSwapCache(lpage->master_page));
+			TRACE_TASK(current, "master_PFN = %05lx r_PFN = %05lx PageSwapCache=%d\n", lpage->master_pfn, lpage->r_pfn, PageSwapCache(lpage->master_page));
 		}
 		rcu_read_unlock();
 	}
@@ -577,7 +578,7 @@ asmlinkage long sys_set_page_color(int cpu)
 				continue;
 			}
 			
-			TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
+			TRACE_TASK(current, "addr: %08x, pfn: %05lx, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
 			put_page(old_page);
 		}
 		
@@ -593,7 +594,6 @@ asmlinkage long sys_set_page_color(int cpu)
 asmlinkage long sys_test_call(unsigned int param)
 {
 	long ret = 0;
-	unsigned long flags;
 	struct vm_area_struct *vma_itr = NULL;
 	
 	TRACE_CUR("test_call param = %d\n", param);
@@ -604,7 +604,7 @@ asmlinkage long sys_test_call(unsigned int param)
 		while (vma_itr != NULL) {
 			int i, num_pages;
 			struct page* old_page;
-			TRACE_TASK(current, "--------------------------------------------\n");
+			TRACE_TASK(current, "------------------------------------------------------\n");
 			TRACE_TASK(current, "vm_start : %lx\n", vma_itr->vm_start);
 			TRACE_TASK(current, "vm_end   : %lx\n", vma_itr->vm_end);
 			TRACE_TASK(current, "vm_flags : %lx\n", vma_itr->vm_flags);
@@ -635,12 +635,12 @@ asmlinkage long sys_test_call(unsigned int param)
 					continue;
 				}
 				
-				TRACE_TASK(current, "addr: %08x, pfn: %ld, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
+				TRACE_TASK(current, "addr: %08x, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
 				put_page(old_page);
 			}
 			vma_itr = vma_itr->vm_next;
 		}
-		printk(KERN_INFO "--------------------------------------------\n");
+		TRACE_TASK(current, "------------------------------------------------------\n");
 		up_read(&current->mm->mmap_sem);
 	}
 	else if (param == 1) {

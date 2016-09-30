@@ -8,8 +8,8 @@
 struct shared_lib_page {
 	struct page *master_page;
 	struct page *r_page;
-	unsigned long master_pfn;
-	unsigned long r_pfn;
+	unsigned long int master_pfn;
+	unsigned long int r_pfn;
 	struct list_head list;
 };
 

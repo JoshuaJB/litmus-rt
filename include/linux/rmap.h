@@ -188,7 +188,8 @@ int page_referenced(struct page *, int is_locked,
 #define TTU_ACTION(x) ((x) & TTU_ACTION_MASK)
 
 int try_to_unmap(struct page *, enum ttu_flags flags);
-
+int try_to_unmap_one_only(struct page *page, struct vm_area_struct *vma,
+		     unsigned long address, void *arg);
 /*
  * Used by uprobes to replace a userspace page safely
  */

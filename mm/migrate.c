@@ -406,6 +406,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		int extra_count)
 {
 	int expected_count = 1 + extra_count;
+	int prev_count = page_count(page);
 	void **pslot;
 
 	BUG_ON(!mapping);
@@ -417,7 +418,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	expected_count += 1 + page_has_private(page);
 	
 	TRACE_TASK(current, "page_count(page) = %d, expected_count = %d, page_has_private? %d\n", page_count(page), expected_count, page_has_private(page));
-	
+/*	
 	if (page_count(page) != expected_count ||
 		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
 		spin_unlock_irq(&mapping->tree_lock);
@@ -425,12 +426,12 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		return -EAGAIN;
 	}
 
-	if (!page_freeze_refs(page, expected_count)) {
+	if (!page_freeze_refs(page, expected_count)) { // if page_count(page) == expected_count, then set page_count = 0
 		spin_unlock_irq(&mapping->tree_lock);
 		TRACE_TASK(current, "2\n");
 		return -EAGAIN;
 	}
-
+*/
 	/*
 	 * In the async migration case of moving a page with buffers, lock the
 	 * buffers using trylock before the mapping is moved. If the mapping
@@ -455,7 +456,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		set_page_private(newpage, page_private(page));
 	}
 
-	radix_tree_replace_slot(pslot, newpage);
+	//radix_tree_replace_slot(pslot, newpage);
 	//radix_tree_replace_slot(pslot, page);
 
 	/*
@@ -463,7 +464,8 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	 * to one less reference.
 	 * We know this isn't the last reference.
 	 */
-	page_unfreeze_refs(page, expected_count - 1);
+	//page_unfreeze_refs(page, expected_count - 1);
+	page_unfreeze_refs(page, prev_count);
 	
 	/*
 	 * If moved to a different zone then also account
@@ -738,7 +740,7 @@ int replicate_page(struct address_space *mapping,
 	int rc, extra_count = 0;
 
 	BUG_ON(PageWriteback(page));	/* Writeback must be complete */
-	//extra_count = page_count(page) - 2;
+
 	rc = replicate_page_move_mapping(mapping, newpage, page, NULL, mode, extra_count);
 	TRACE_TASK(current, "replicate_page_move_mapping returned %d\n", rc);
 	if (rc != MIGRATEPAGE_SUCCESS)
@@ -1147,6 +1149,7 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 				int force, enum migrate_mode mode, int has_replica)
 {
 	int rc = -EAGAIN;
+	int ttu_ret = SWAP_AGAIN;
 	int page_was_mapped = 0;
 	struct anon_vma *anon_vma = NULL;
 
@@ -1270,17 +1273,27 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 
 	/* Establish migration ptes or remove ptes */
 	if (page_mapped(page)) {
-		try_to_unmap(page,
-			TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS);
+		// ttu_ret = try_to_unmap(page, TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS);
+		struct rmap_walk_control rwc = {
+			.rmap_one = try_to_unmap_one_only,
+			.arg = (void *)(TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS),
+		};
+		
+		ttu_ret = rmap_walk(page, &rwc);
+		
 		page_was_mapped = 1;
 		TRACE_TASK(current, "Page %d unmapped from all PTEs\n", page_to_pfn(page));
 	}
 
 skip_unmap:
-	if (!page_mapped(page)) {
+	//if (!page_mapped(page)) {
+	if (ttu_ret == SWAP_SUCCESS) {
 		TRACE_TASK(current, "Call copy_to_new_page\n");
 		rc = copy_to_new_page(newpage, page, page_was_mapped, mode, has_replica);
-	}
+	} else if (ttu_ret == SWAP_AGAIN)
+		printk(KERN_ERR "rmap_walk returned SWAP_AGAIN\n");
+	else
+		printk(KERN_ERR "rmap_walk failed\n");
 
 	if (rc && page_was_mapped)
 		remove_migration_ptes(page, page);
@@ -1399,20 +1412,22 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	rcu_read_unlock();
 	
 	if (is_exist_in_psl)
-		TRACE_TASK(current, "Page %ld exists in PSL list\n", lib_page->master_pfn);
+		TRACE_TASK(current, "Page %x exists in PSL list\n", lib_page->master_pfn);
 	
 	if (lib_page->r_page == NULL) {
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
 			return -ENOMEM;
+		printk(KERN_ERR "Page %lx allocated\n", page_to_pfn(newpage));
 	} else {
 		newpage = lib_page->r_page;
 		has_replica = 1;
+		printk(KERN_ERR "Page %lx found\n", page_to_pfn(newpage));
 	}
 
 	if (page_count(page) == 1) {
 		/* page was freed from under us. So we are done. */
-		TRACE_TASK(current, "page %ld _count == 1\n", page_to_pfn(page));
+		TRACE_TASK(current, "page %x _count == 1\n", page_to_pfn(page));
 		goto out;
 	}
 
@@ -1422,25 +1437,25 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 
 	rc = __unmap_and_copy(page, newpage, force, mode, has_replica);
 	
-	if (has_replica == 0) {
+	if (has_replica == 0 && rc == MIGRATEPAGE_SUCCESS) {
 		lib_page->r_page = newpage;
 		lib_page->r_pfn = page_to_pfn(newpage);
 	}
 	
 out:
-TRACE_TASK(current, "__unmap_and_copy returned %d\n", rc);
-//	if (rc != -EAGAIN) {
+TRACE_TASK(current, "__unmap_and_copy returned %s\n", rc==MIGRATEPAGE_SUCCESS?"SUCCESS":"FAIL");
+	if (rc != -EAGAIN) {
 		/*
 		 * A page that has been migrated has all references
 		 * removed and will be freed. A page that has not been
 		 * migrated will have kepts its references and be
 		 * restored.
 		 */
-//		list_del(&page->lru);
-//		dec_zone_page_state(page, NR_ISOLATED_ANON +
-//				page_is_file_cache(page));
-//		putback_lru_page(page);
-//	}
+		list_del(&page->lru);
+		dec_zone_page_state(page, NR_ISOLATED_ANON +
+				page_is_file_cache(page));
+		putback_lru_page(page);
+	}
 	
 //TRACE_TASK(current, "old page freed\n");
 	/*
