@@ -1424,7 +1424,7 @@ static int try_to_unmap_one_entry(struct page *page, struct vm_area_struct *vma,
 		swp_entry_t entry;
 		entry = make_migration_entry(page, pte_write(pteval));
 		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));
-printk(KERN_ERR "established migration entry for page %05lx PTE_WRITE = %d\n", page_to_pfn(page), pte_write(pteval));		
+//printk(KERN_ERR "established migration entry for page %05lx PTE_WRITE = %d\n", page_to_pfn(page), pte_write(pteval));		
 	} else
 		dec_mm_counter(mm, MM_FILEPAGES);
 

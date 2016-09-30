@@ -450,6 +450,7 @@ asmlinkage long sys_set_page_color(int cpu)
 					TRACE_TASK(current, "SHARED isolate_lru_page success\n");
 				} else {
 					TRACE_TASK(current, "SHARED isolate_lru_page failed\n");
+					nr_failed++;
 				}
 				put_page(old_page);
 			}
@@ -513,7 +514,10 @@ asmlinkage long sys_set_page_color(int cpu)
 	}
 */	
 	if (!list_empty(&task_shared_pagelist)) {
-		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
+		if (node != 8)
+			ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
+		else
+			ret = nr_shared_pages;
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
 		nr_not_migrated += ret;
 		if (ret) {
@@ -536,7 +540,7 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d\n", nr_pages, nr_failed);
-	printk(KERN_INFO "node = %ld, nr_migrated_pages = %d, nr_shared_pages = %d, nr_failed = %d\n", node, nr_pages-nr_not_migrated, nr_shared_pages, nr_failed);
+	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_shared_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_shared_pages, nr_failed, nr_not_migrated);
 
 	flush_cache(1);
 /* for debug START */

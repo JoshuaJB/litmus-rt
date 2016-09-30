@@ -1418,11 +1418,11 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
 			return -ENOMEM;
-		printk(KERN_ERR "Page %lx allocated\n", page_to_pfn(newpage));
+		//printk(KERN_ERR "Page %lx allocated\n", page_to_pfn(newpage));
 	} else {
 		newpage = lib_page->r_page;
 		has_replica = 1;
-		printk(KERN_ERR "Page %lx found\n", page_to_pfn(newpage));
+		//printk(KERN_ERR "Page %lx found\n", page_to_pfn(newpage));
 	}
 
 	if (page_count(page) == 1) {
