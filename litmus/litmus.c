@@ -385,7 +385,7 @@ asmlinkage long sys_set_page_color(int cpu)
 	put_task_struct(current);
 
 	down_read(&mm->mmap_sem);
-	TRACE_TASK(current, "SYSCALL set_page_color\n");
+
 	vma_itr = mm->mmap;
 	/* Iterate all vm_area_struct */
 	while (vma_itr != NULL) {
@@ -439,10 +439,6 @@ asmlinkage long sys_set_page_color(int cpu)
 						lib_page->r_pfn[cpu_i] = INVALID_PFN;
 					}
 					list_add_tail(&lib_page->list, &shared_lib_pages);
-					TRACE_TASK(current, "NEW PAGE %05lx ADDED.\n", lib_page->master_pfn);
-				}
-				else {
-					TRACE_TASK(current, "FOUND PAGE %05lx in the list.\n", lib_page->master_pfn);
 				}
 				
 				/* add to task_shared_pagelist */
@@ -475,15 +471,11 @@ asmlinkage long sys_set_page_color(int cpu)
 	}
 	
 	ret = 0;
-	if (!is_realtime(current))
+	lv = tsk_rt(current)->mc2_data->crit;
+	if (cpu == -1)
 		node = 8;
-	else {
-		lv = tsk_rt(current)->mc2_data->crit;
-		if (cpu == -1)
-			node = 8;
-		else
-			node = cpu*2 + lv;
-	}
+	else
+		node = cpu*2 + lv;
 
 	/* Migrate private pages */
 	if (!list_empty(&pagelist)) {
@@ -511,60 +503,11 @@ asmlinkage long sys_set_page_color(int cpu)
 	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_shared_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_shared_pages, nr_failed, nr_not_migrated);
 
 	flush_cache(1);
-
-/* for debug START */
-	TRACE_TASK(current, "PSL PAGES\n");
-	{
-		struct shared_lib_page *lpage;
-		
-		rcu_read_lock();
-		list_for_each_entry(lpage, &shared_lib_pages, list)
-		{
-			TRACE_TASK(current, "master_PFN = %05lx r_PFN = %05lx, %05lx, %05lx, %05lx, %05lx\n", lpage->master_pfn, lpage->r_pfn[0], lpage->r_pfn[1], lpage->r_pfn[2], lpage->r_pfn[3], lpage->r_pfn[4]);
-		}
-		rcu_read_unlock();
-	}
-#if 0	
-	TRACE_TASK(current, "AFTER migration\n");
-	down_read(&mm->mmap_sem);
-	vma_itr = mm->mmap;
-	while (vma_itr != NULL) {
-		unsigned int num_pages = 0, i;
-		struct page *old_page = NULL;
-		
-		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
-		for (i = 0; i < num_pages; i++) {
-			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
-			if (IS_ERR(old_page))
-				continue;
-			if (!old_page)
-				continue;
-
-			if (PageReserved(old_page)) {
-				TRACE("Reserved Page!\n");
-				put_page(old_page);
-				continue;
-			}
-			
-			if (page_count(old_page) - page_mapcount(old_page) == 1) {
-				put_page(old_page);
-				continue;
-			}
-			
-			TRACE_TASK(current, "addr: %08x, pfn: %05lx, _mapcount: %d, _count: %d\n", vma_itr->vm_start + PAGE_SIZE*i, __page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page));
-			put_page(old_page);
-		}
-		
-		vma_itr = vma_itr->vm_next;
-	}
-	up_read(&mm->mmap_sem);
-/* for debug FIN. */
-#endif
 	
 	return nr_not_migrated;
 }
 
-/* sys_test_call() is a test system call for developing */
+/* sys_test_call() is a test system call for debugging */
 asmlinkage long sys_test_call(unsigned int param)
 {
 	long ret = 0;
@@ -572,6 +515,12 @@ asmlinkage long sys_test_call(unsigned int param)
 	
 	TRACE_CUR("test_call param = %d\n", param);
 	
+	/* if param == 0, 
+	 * show vm regions and the page frame numbers 
+	 * associated with the vm region.
+	 * if param == 1, 
+	 * print the master list. 
+	 */
 	if (param == 0) {
 		down_read(&current->mm->mmap_sem);
 		vma_itr = current->mm->mmap;
@@ -584,16 +533,7 @@ asmlinkage long sys_test_call(unsigned int param)
 			TRACE_TASK(current, "vm_flags : %lx\n", vma_itr->vm_flags);
 			TRACE_TASK(current, "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
 			TRACE_TASK(current, "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
-	/*		if (vma_itr->vm_file) {
-				struct file *fp = vma_itr->vm_file;
-				unsigned long fcount = atomic_long_read(&(fp->f_count));
-				printk(KERN_INFO "f_count : %ld\n", fcount);
-				if (fcount > 1) {
-					vma_itr->vm_page_prot = pgprot_noncached(vma_itr->vm_page_prot);
-				}
-			}
-			printk(KERN_INFO "vm_prot2 : %x\n", pgprot_val(vma_itr->vm_page_prot));
-	*/		
+	
 			num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 			for (i = 0; i < num_pages; i++) {
 				old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
@@ -616,20 +556,20 @@ asmlinkage long sys_test_call(unsigned int param)
 		}
 		TRACE_TASK(current, "------------------------------------------------------\n");
 		up_read(&current->mm->mmap_sem);
-	}
-	else if (param == 1) {
-		int i;
-		flush_cache(1);
-		for (i = 0; i < 4; i++) {
-			lock_cache(i, 0x00003fff);
+	} else if (param == 1) {
+		TRACE_TASK(current, "Shared pages and replicas.\n");
+		{
+			struct shared_lib_page *lpage;
+
+			rcu_read_lock();
+			list_for_each_entry(lpage, &shared_lib_pages, list)
+			{
+				TRACE_TASK(current, "master_PFN = %05lx r_PFN = %05lx, %05lx, %05lx, %05lx, %05lx\n", lpage->master_pfn, lpage->r_pfn[0], lpage->r_pfn[1], lpage->r_pfn[2], lpage->r_pfn[3], lpage->r_pfn[4]);
+			}
+			rcu_read_unlock();
 		}
 	}
-	else if (param == 2) {
-		int i;
-		for (i = 0; i < 4; i++) {
-			lock_cache(i, 0xffffffff);
-		}
-	}
+	
 	return ret;
 }
 

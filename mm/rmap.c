@@ -1423,8 +1423,7 @@ static int try_to_unmap_one_entry(struct page *page, struct vm_area_struct *vma,
 		/* Establish migration entry for a file page */
 		swp_entry_t entry;
 		entry = make_migration_entry(page, pte_write(pteval));
-		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));
-//printk(KERN_ERR "established migration entry for page %05lx PTE_WRITE = %d\n", page_to_pfn(page), pte_write(pteval));		
+		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));	
 	} else
 		dec_mm_counter(mm, MM_FILEPAGES);
 
@@ -1467,7 +1466,6 @@ int try_to_unmap_one_only(struct page *page, struct vm_area_struct *vma,
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct mm_struct *current_mm;
-	//int ret = SWAP_AGAIN;
 	
 	rcu_read_lock();
 	get_task_struct(current);

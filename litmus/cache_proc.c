@@ -1006,59 +1006,9 @@ int setup_flusher_array(void)
 		}
 
 		flusher_pages[way] = flusher_color_arr;
-		/* This is ugly. */
 		for (color = 0; color < MAX_NR_COLORS; color++) {
 			int node;
-			switch (color) {
-				case 0:
-					node = 48;
-					break;
-				case 1:
-					node = 49;
-					break;
-				case 2:
-					node = 50;
-					break;
-				case 3:
-					node = 51;
-					break;
-				case 4:
-					node = 68;
-					break;
-				case 5:
-					node = 69;
-					break;
-				case 6:
-					node = 86;
-					break;
-				case 7:
-					node = 87;
-					break;
-				case 8:
-					node = 88;
-					break;
-				case 9:
-					node = 105;
-					break;
-				case 10:
-					node = 106;
-					break;
-				case 11:
-					node = 107;
-					break;
-				case 12:
-					node = 108;
-					break;					
-				case 13:
-					node = 125;
-					break;
-				case 14:
-					node = 126;
-					break;
-				case 15:
-					node = 127;
-					break;
-			}	
+			node = color + 112; // populate from bank 7
 			page = get_colored_page(node);
 			if (!page) {
 				printk(KERN_WARNING "no more colored pages\n");

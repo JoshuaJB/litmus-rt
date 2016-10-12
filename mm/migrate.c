@@ -409,7 +409,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	void **pslot;
 
 	BUG_ON(!mapping);
-	TRACE_TASK(current, "page has mapping.\n");
+
 	spin_lock_irq(&mapping->tree_lock);
 
 	pslot = radix_tree_lookup_slot(&mapping->page_tree, page_index(page));
@@ -933,7 +933,8 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 
 	mapping = page_mapping(page);
 	if (!mapping) {
-		rc = migrate_page(mapping, newpage, page, mode);
+		/* a shared library page must have a mapping. */
+		BUG();
 	}
 	else if (mapping->a_ops->migratepage) {
 		rc = replicate_page(mapping, newpage, page, mode, has_replica);
@@ -1296,10 +1297,7 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 		}
 	}
 	rcu_read_unlock();
-	
-	if (master_exist_in_psl)
-		TRACE_TASK(current, "Page %05lx exists in PSL list\n", lib_page->master_pfn);
-	
+
 	if (lib_page->r_page[cpu] == NULL) {
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
@@ -1588,9 +1586,7 @@ int replicate_pages(struct list_head *from, new_page_t get_new_page,
 		list_for_each_entry_safe(page, page2, from, lru) {
 			cond_resched();
 			
-			TRACE_TASK(current, "PageAnon=%d\n", PageAnon(page));
 			rc = unmap_and_copy(get_new_page, put_new_page, private, page, pass > 2, mode);
-			TRACE_TASK(current, "rc = %d\n", rc);
 
 			switch(rc) {
 			case -ENOMEM:

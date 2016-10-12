@@ -4,9 +4,6 @@
 #include <litmus/litmus.h>
 #include <litmus/reservation.h>
 
-#define TRACE(fmt, args...) do {} while (false)
-#define TRACE_TASK(fmt, args...) do {} while (false)
-
 #define BUDGET_ENFORCEMENT_AT_C 0
 	
 void reservation_init(struct reservation *res)

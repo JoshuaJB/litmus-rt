@@ -247,8 +247,8 @@ static int do_add_pages(void)
 		counter[color]++;
 	//	printk("page(%d) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
                 //show_nr_pages();
-		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
-		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
+		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
+		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
 		//if ( PAGES_PER_COLOR && color>=16*2) {
 			add_page_to_color_list(page);
 	//		printk("add page(%d) = color %x, bank %x\n", color, page_color(page), page_bank(page));
@@ -304,7 +304,7 @@ out:
  * This function should not be accessed by others directly. 
  * 
  */ 
-static struct  page *new_alloc_page_color( unsigned long color)
+static struct  page *new_alloc_page_color( unsigned long color, int do_refill)
 {
 //	printk("allocate new page color = %d\n", color);	
 	struct color_group *cgroup;
@@ -333,18 +333,19 @@ static struct  page *new_alloc_page_color( unsigned long color)
 out_unlock:
 	spin_unlock(&cgroup->lock);
 out:
-	if( smallest_nr_pages() == 0)
+	if( smallest_nr_pages() == 0 && do_refill == 1)
         {
 		do_add_pages();
        //     printk("ERROR(bank_proc.c) = We don't have enough pages in bank_proc.c\n");        
         
         }
+		
 	return rPage;
 }
 
 struct page* get_colored_page(unsigned long color)
 {
-	return new_alloc_page_color(color);
+	return new_alloc_page_color(color, 1);
 }
 
 /*
@@ -368,12 +369,12 @@ struct page *new_alloc_page(struct page *page, unsigned long node, int **x)
 	unsigned int color;
 	
 
-        unsigned int idx = 0;
+    unsigned int idx = 0;
+	do {
         idx += num_by_bitmask_index(set_partition[node], set_index[node]);
         idx += number_cachecolors* num_by_bitmask_index(bank_partition[node], bank_index[node]);
-	//printk("node  = %d, idx = %d\n", node, idx);
-
-	rPage =  new_alloc_page_color(idx);
+		rPage =  new_alloc_page_color(idx, 0);
+	} while (rPage == NULL);
         
             
         set_index[node] = (set_index[node]+1) % counting_one_set(set_partition[node]);
