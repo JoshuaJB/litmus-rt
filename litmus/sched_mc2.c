@@ -27,8 +27,8 @@
 #include <litmus/reservation.h>
 #include <litmus/polling_reservations.h>
 
-//#define TRACE(fmt, args...) do {} while (false)
-//#define TRACE_TASK(fmt, args...) do {} while (false)
+#define TRACE(fmt, args...) do {} while (false)
+#define TRACE_TASK(fmt, args...) do {} while (false)
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 

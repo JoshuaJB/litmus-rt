@@ -2231,24 +2231,15 @@ static int wp_page_shared(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * read-only shared pages can get COWed by
 	 * get_user_pages(.write=1, .force=1).
 	 */
-//	if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
-	{
+	if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
 		int tmp;
 
 		pte_unmap_unlock(page_table, ptl);
-		
-		if (page_write_fault_retry(old_page)) {
+		tmp = do_page_mkwrite(vma, old_page, address);
+		if (unlikely(!tmp || (tmp &
+				      (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
 			page_cache_release(old_page);
-			return 0;
-		}
-		
-		if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
-			tmp = do_page_mkwrite(vma, old_page, address);
-			if (unlikely(!tmp || (tmp &
-						  (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
-				page_cache_release(old_page);
-				return tmp;
-			}
+			return tmp;
 		}
 		/*
 		 * Since we dropped the lock we need to revalidate

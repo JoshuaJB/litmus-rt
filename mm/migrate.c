@@ -405,7 +405,6 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		struct buffer_head *head, enum migrate_mode mode,
 		int extra_count)
 {
-	int expected_count = 1 + extra_count;
 	int prev_count = page_count(page);
 	void **pslot;
 
@@ -415,38 +414,6 @@ int replicate_page_move_mapping(struct address_space *mapping,
 
 	pslot = radix_tree_lookup_slot(&mapping->page_tree, page_index(page));
 
-	expected_count += 1 + page_has_private(page);
-	
-	TRACE_TASK(current, "page_count(page) = %d, expected_count = %d, page_has_private? %d\n", page_count(page), expected_count, page_has_private(page));
-/*	
-	if (page_count(page) != expected_count ||
-		radix_tree_deref_slot_protected(pslot, &mapping->tree_lock) != page) {
-		spin_unlock_irq(&mapping->tree_lock);
-		TRACE_TASK(current, "1\n");
-		return -EAGAIN;
-	}
-
-	if (!page_freeze_refs(page, expected_count)) { // if page_count(page) == expected_count, then set page_count = 0
-		spin_unlock_irq(&mapping->tree_lock);
-		TRACE_TASK(current, "2\n");
-		return -EAGAIN;
-	}
-*/
-	/*
-	 * In the async migration case of moving a page with buffers, lock the
-	 * buffers using trylock before the mapping is moved. If the mapping
-	 * was moved, we later failed to lock the buffers and could not move
-	 * the mapping back due to an elevated page count, we would have to
-	 * block waiting on other references to be dropped.
-	 */
-/*	if (mode == MIGRATE_ASYNC && head &&
-			!buffer_migrate_lock_buffers(head, mode)) {
-		page_unfreeze_refs(page, expected_count);
-		spin_unlock_irq(&mapping->tree_lock);
-		TRACE_TASK(current, "3\n");
-		return -EAGAIN;
-	}
-*/
 	/*
 	 * Now we know that no one else is looking at the page.
 	 */
@@ -456,15 +423,11 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		set_page_private(newpage, page_private(page));
 	}
 
-	//radix_tree_replace_slot(pslot, newpage);
-	//radix_tree_replace_slot(pslot, page);
-
 	/*
 	 * Drop cache reference from old page by unfreezing
-	 * to one less reference.
+	 * to the previous reference.
 	 * We know this isn't the last reference.
 	 */
-	//page_unfreeze_refs(page, expected_count - 1);
 	page_unfreeze_refs(page, prev_count);
 	
 	/*
@@ -702,7 +665,6 @@ void replicate_page_copy(struct page *newpage, struct page *page)
 	 */
 	if (PageWriteback(newpage))
 		end_page_writeback(newpage);
-	TRACE_TASK(current, "replicate_page_copy done!\n");
 }
 
 /************************************************************
@@ -742,7 +704,6 @@ int replicate_page(struct address_space *mapping,
 	BUG_ON(PageWriteback(page));	/* Writeback must be complete */
 
 	rc = replicate_page_move_mapping(mapping, newpage, page, NULL, mode, extra_count);
-	TRACE_TASK(current, "replicate_page_move_mapping returned %d\n", rc);
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
 
@@ -975,19 +936,9 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 		rc = migrate_page(mapping, newpage, page, mode);
 	}
 	else if (mapping->a_ops->migratepage) {
-		TRACE_TASK(current, "ops migration callback\n");
-		/*
-		 * Most pages have a mapping and most filesystems provide a
-		 * migratepage callback. Anonymous pages are part of swap
-		 * space which also has its own migratepage callback. This
-		 * is the most common path for page migration.
-		 */
-		//rc = mapping->a_ops->migratepage(mapping,
-		//				newpage, page, mode);
 		rc = replicate_page(mapping, newpage, page, mode, has_replica);
 	}
 	else {
-		TRACE_TASK(current, "fallback function\n");
 		rc = fallback_migrate_page(mapping, newpage, page, mode);
 	}
 
@@ -995,10 +946,8 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 		newpage->mapping = NULL;
 	} else {
 		if (page_was_mapped) {
-			TRACE_TASK(current, "PAGE_WAS_MAPPED = 1\n");
 			remove_migration_ptes(page, newpage);
 		}
-		//page->mapping = NULL;
 	}
 
 	unlock_page(newpage);
@@ -1178,76 +1127,18 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 
 	if (PageWriteback(page)) {
 		/*
-		 * Only in the case of a full synchronous migration is it
-		 * necessary to wait for PageWriteback. In the async case,
-		 * the retry loop is too short and in the sync-light case,
-		 * the overhead of stalling is too much
+		 * The code of shared library cannot be written.
 		 */
 		BUG();
-		/*
-		if (mode != MIGRATE_SYNC) {
-			rc = -EBUSY;
-			goto out_unlock;
-		}
-		if (!force)
-			goto out_unlock;
-		wait_on_page_writeback(page);
-		*/
 	}
-	/*
-	 * By try_to_unmap(), page->mapcount goes down to 0 here. In this case,
-	 * we cannot notice that anon_vma is freed while we migrates a page.
-	 * This get_anon_vma() delays freeing anon_vma pointer until the end
-	 * of migration. File cache pages are no problem because of page_lock()
-	 * File Caches may use write_page() or lock_page() in migration, then,
-	 * just care Anon page here.
-	 */
+
 	if (PageAnon(page) && !PageKsm(page)) {
-		printk(KERN_INFO "ANON but not KSM\n");
+		/* The shared library pages must be backed by a file. */
 		BUG();
-		/*
-		 * Only page_lock_anon_vma_read() understands the subtleties of
-		 * getting a hold on an anon_vma from outside one of its mms.
-		 */
-/*
-		anon_vma = page_get_anon_vma(page);
-		if (anon_vma) {
-*/
-			/*
-			 * Anon page
-			 */
-/*
-		} else if (PageSwapCache(page)) {
-*/
-			/*
-			 * We cannot be sure that the anon_vma of an unmapped
-			 * swapcache page is safe to use because we don't
-			 * know in advance if the VMA that this page belonged
-			 * to still exists. If the VMA and others sharing the
-			 * data have been freed, then the anon_vma could
-			 * already be invalid.
-			 *
-			 * To avoid this possibility, swapcache pages get
-			 * migrated but are not remapped when migration
-			 * completes
-			 */
-/*		} else {
-			goto out_unlock;
-		}
-*/		
 	}
 
 	if (unlikely(isolated_balloon_page(page))) {
 		BUG();
-		/*
-		 * A ballooned page does not need any special attention from
-		 * physical to virtual reverse mapping procedures.
-		 * Skip any attempt to unmap PTEs or to remap swap cache,
-		 * in order to avoid burning cycles at rmap level, and perform
-		 * the page migration right away (proteced by page lock).
-		 */
-		rc = balloon_page_migrate(newpage, page, mode);
-		goto out_unlock;
 	}
 
 	/*
@@ -1273,22 +1164,17 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 
 	/* Establish migration ptes or remove ptes */
 	if (page_mapped(page)) {
-		// ttu_ret = try_to_unmap(page, TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS);
 		struct rmap_walk_control rwc = {
 			.rmap_one = try_to_unmap_one_only,
 			.arg = (void *)(TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS),
 		};
-		
 		ttu_ret = rmap_walk(page, &rwc);
 		
 		page_was_mapped = 1;
-		TRACE_TASK(current, "Page %d unmapped from all PTEs\n", page_to_pfn(page));
 	}
 
 skip_unmap:
-	//if (!page_mapped(page)) {
 	if (ttu_ret == SWAP_SUCCESS) {
-		TRACE_TASK(current, "Call copy_to_new_page\n");
 		rc = copy_to_new_page(newpage, page, page_was_mapped, mode, has_replica);
 	} else if (ttu_ret == SWAP_AGAIN)
 		printk(KERN_ERR "rmap_walk returned SWAP_AGAIN\n");
@@ -1418,16 +1304,13 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 		newpage = get_new_page(page, private, &result);
 		if (!newpage)
 			return -ENOMEM;
-		//printk(KERN_ERR "Page %lx allocated\n", page_to_pfn(newpage));
 	} else {
 		newpage = lib_page->r_page[cpu];
 		has_replica = 1;
-		//printk(KERN_ERR "Page %lx found\n", page_to_pfn(newpage));
 	}
 
 	if (page_count(page) == 1) {
 		/* page was freed from under us. So we are done. */
-		TRACE_TASK(current, "page %x _count == 1\n", page_to_pfn(page));
 		goto out;
 	}
 
@@ -1443,7 +1326,6 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	}
 	
 out:
-TRACE_TASK(current, "__unmap_and_copy returned %s\n", rc==MIGRATEPAGE_SUCCESS?"SUCCESS":"FAIL");
 	if (rc != -EAGAIN) {
 		/*
 		 * A page that has been migrated has all references
@@ -1457,7 +1339,6 @@ TRACE_TASK(current, "__unmap_and_copy returned %s\n", rc==MIGRATEPAGE_SUCCESS?"S
 		putback_lru_page(page);
 	}
 	
-//TRACE_TASK(current, "old page freed\n");
 	/*
 	 * If migration was not successful and there's a freeing callback, use
 	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed

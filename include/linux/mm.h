@@ -2200,7 +2200,5 @@ void __init setup_nr_node_ids(void);
 static inline void setup_nr_node_ids(void) {}
 #endif
 
-extern void replication_init(void);
-
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

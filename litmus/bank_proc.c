@@ -24,10 +24,12 @@
 // This Address Decoding is used in imx6-sabredsd platform
 #define BANK_MASK  0x38000000     
 #define BANK_SHIFT  27
+
 #define CACHE_MASK  0x0000f000      
 #define CACHE_SHIFT 12
 
-#define PAGES_PER_COLOR 1024
+#define PAGES_PER_COLOR 2000
+#define PAGES_PER_COLOR_HALF 1000
 unsigned int NUM_PAGE_LIST;  //8*16
 
 unsigned int number_banks;
@@ -245,7 +247,8 @@ static int do_add_pages(void)
 		counter[color]++;
 	//	printk("page(%d) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
                 //show_nr_pages();
-		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
+		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
+		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
 		//if ( PAGES_PER_COLOR && color>=16*2) {
 			add_page_to_color_list(page);
 	//		printk("add page(%d) = color %x, bank %x\n", color, page_color(page), page_bank(page));

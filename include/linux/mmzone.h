@@ -126,7 +126,6 @@ enum zone_stat_item {
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
 	NR_FILE_PAGES,
-	NR_REPL_PAGES,
 	NR_FILE_DIRTY,
 	NR_WRITEBACK,
 	NR_SLAB_RECLAIMABLE,

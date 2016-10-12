@@ -662,7 +662,7 @@ static inline int free_pages_check(struct page *page)
 	if (unlikely(page_mapcount(page)))
 		bad_reason = "nonzero mapcount";
 	if (unlikely(page->mapping != NULL))
-		bad_reason = "non-NULL mapping free_check";
+		bad_reason = "non-NULL mapping";
 	if (unlikely(atomic_read(&page->_count) != 0))
 		bad_reason = "nonzero _count";
 	if (unlikely(page->flags & PAGE_FLAGS_CHECK_AT_FREE)) {

@@ -357,17 +357,9 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 			writel_relaxed(0x0, cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
 				       i * L2X0_LOCKDOWN_STRIDE);
 		}
-/*
-		for (i = 0; i < nr_lockregs;  i++) {
-			barrier();
-			mem_lock(UNLOCK_ALL, i);
-			barrier();
-			//writel_relaxed(nr_unlocked_way[16], ld_d_reg(i));
-			//writel_relaxed(nr_unlocked_way[16], ld_i_reg(i));
-		}
-*/
+
 	}
-	printk("LOCK_ALL HANDLER\n");
+
 	local_irq_save(flags);
 	print_lockdown_registers(smp_processor_id());
 	l2c310_flush_all();
@@ -379,9 +371,6 @@ out:
 
 void cache_lockdown(u32 lock_val, int cpu)
 {
-	//unsigned long flags;
-	//raw_spin_lock_irqsave(&cache_lock, flags);
-
 	__asm__ __volatile__ (
 "	str	%[lockval], [%[dcachereg]]\n"
 "	str	%[lockval], [%[icachereg]]\n"
@@ -390,8 +379,6 @@ void cache_lockdown(u32 lock_val, int cpu)
 	  [icachereg] "r" (ld_i_reg(cpu)),
 	  [lockval] "r" (lock_val)
 	: "cc");
-
-	//raw_spin_unlock_irqrestore(&cache_lock, flags);
 }
 
 void do_partition(enum crit_level lv, int cpu)
@@ -421,14 +408,12 @@ void do_partition(enum crit_level lv, int cpu)
 
 	}
 	barrier();
-	//cache_lockdown(regs, cpu);
+
 	writel_relaxed(regs, cache_base + L2X0_LOCKDOWN_WAY_D_BASE + cpu * L2X0_LOCKDOWN_STRIDE);
 	writel_relaxed(regs, cache_base + L2X0_LOCKDOWN_WAY_I_BASE + cpu * L2X0_LOCKDOWN_STRIDE);
 	barrier();
 
 	raw_spin_unlock_irqrestore(&cache_lock, flags);
-	
-	flush_cache(0);
 }
 
 void lock_cache(int cpu, u32 val)
@@ -544,7 +529,6 @@ void inline enter_irq_mode(void)
 
 	if (os_isolation == 0)
 		return;	
-
 	prev_lockdown_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
 	prev_lockdown_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
 	
@@ -1011,7 +995,6 @@ int setup_flusher_array(void)
 		ret = -EINVAL;
 		goto out;
 	}
-
 	for (way = 0; way < MAX_NR_WAYS; way++) {
 		void **flusher_color_arr;
 		flusher_color_arr = (void**) kmalloc(sizeof(**flusher_pages)
@@ -1023,7 +1006,7 @@ int setup_flusher_array(void)
 		}
 
 		flusher_pages[way] = flusher_color_arr;
-
+		/* This is ugly. */
 		for (color = 0; color < MAX_NR_COLORS; color++) {
 			int node;
 			switch (color) {
@@ -1090,6 +1073,7 @@ int setup_flusher_array(void)
 			}
 		}
 	}
+
 out:
 	return ret;
 out_free:
