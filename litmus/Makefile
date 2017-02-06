@@ -29,7 +29,8 @@ obj-y     = sched_plugin.o litmus.o \
 		bank_proc.o \
 	    color_shm.o \
 		replicate_lib.o \
-		cache_proc.o
+		cache_proc.o \
+		page_dev.o
 
 obj-$(CONFIG_PLUGIN_CEDF) += sched_cedf.o
 obj-$(CONFIG_PLUGIN_PFAIR) += sched_pfair.o

@@ -65,6 +65,7 @@
 #include <asm/sections.h>
 
 #include <litmus/litmus.h> /* for is_realtime() */
+#include <litmus/page_dev.h> /* for coloring pages */
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>

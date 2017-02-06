@@ -35,6 +35,15 @@
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
 
+/* For page coloring - This address decoding is used in imx6-sabresd
+ * platform without bank interleaving .
+ */
+#define BANK_MASK  0x38000000     
+#define BANK_SHIFT  27
+
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+
 enum {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_RECLAIMABLE,
