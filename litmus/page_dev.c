@@ -269,8 +269,6 @@ static int __init init_litmus_page_dev(void)
 
 	mutex_init(&dev_mutex);
 
-	printk(KERN_INFO "Registering LITMUS^RT proc page_dev sysctl.\n");
-
 	litmus_sysctls = register_sysctl_table(litmus_dir_table);
 	if (!litmus_sysctls) {
 		printk(KERN_WARNING "Could not register LITMUS^RT page_dev sysctl.\n");

@@ -620,8 +620,10 @@ static inline void pre_schedule(struct task_struct *prev, int cpu)
 static inline void post_schedule(struct task_struct *next, int cpu)
 {
 	enum crit_level lev;
-	if ((!next) || !is_realtime(next))
+	if ((!next) || !is_realtime(next)) {
+		do_partition(NUM_CRIT_LEVELS, -1);
 		return;
+	}
 
 	lev = get_task_crit_level(next);
 	do_partition(lev, cpu);

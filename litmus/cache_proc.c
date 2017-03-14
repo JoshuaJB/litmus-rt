@@ -531,7 +531,6 @@ void inline enter_irq_mode(void)
 		return;	
 	prev_lockdown_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
 	prev_lockdown_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
-	
 	writel_relaxed(way_partitions[8], ld_i_reg(cpu));
 	writel_relaxed(way_partitions[8], ld_d_reg(cpu));
 }
@@ -542,6 +541,7 @@ void inline exit_irq_mode(void)
 
 	if (os_isolation == 0)
 		return;
+	
 	writel_relaxed(prev_lockdown_i_reg[cpu], ld_i_reg(cpu));
 	writel_relaxed(prev_lockdown_d_reg[cpu], ld_d_reg(cpu));	
 }

@@ -61,6 +61,8 @@
 
 #include <asm/cacheflush.h>
 
+#include <litmus/cache_proc.h>
+
 #include "fec.h"
 
 static void set_multicast_list(struct net_device *ndev);
@@ -1587,6 +1589,8 @@ fec_enet_interrupt(int irq, void *dev_id)
 	writel(int_events, fep->hwp + FEC_IEVENT);
 	fec_enet_collect_events(fep, int_events);
 
+	enter_irq_mode();
+	
 	if ((fep->work_tx || fep->work_rx) && fep->link) {
 		ret = IRQ_HANDLED;
 
@@ -1605,6 +1609,7 @@ fec_enet_interrupt(int irq, void *dev_id)
 	if (fep->ptp_clock)
 		fec_ptp_check_pps_event(fep);
 
+	exit_irq_mode();
 	return ret;
 }
 

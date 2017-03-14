@@ -247,9 +247,11 @@ static int do_add_pages(void)
 		counter[color]++;
 	//	printk("page(%d) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
                 //show_nr_pages();
-		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
+		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
 		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
 		//if ( PAGES_PER_COLOR && color>=16*2) {
+		//if (color>=32) {
+		if (color>=0) {
 			add_page_to_color_list(page);
 	//		printk("add page(%d) = color %x, bank %x\n", color, page_color(page), page_bank(page));
 		} else{
