@@ -45,15 +45,15 @@ int refill_page_pool = 0;
 spinlock_t reclaim_lock;
 
 unsigned int set_partition[9] = {
-        0x00000003,  /* Core 0, and Level A*/
-        0x00000003,  /* Core 0, and Level B*/
-        0x0000000C,  /* Core 1, and Level A*/
-        0x0000000C,  /* Core 1, and Level B*/
-        0x00000030,  /* Core 2, and Level A*/
-        0x00000030,  /* Core 2, and Level B*/
-        0x000000C0,  /* Core 3, and Level A*/
-        0x000000C0,  /* Core 3, and Level B*/
-        0x0000ff00,  /* Level C */
+        0x0000000f,  /* Core 0, and Level A*/
+        0x0000000f,  /* Core 0, and Level B*/
+        0x000000f0,  /* Core 1, and Level A*/
+        0x000000f0,  /* Core 1, and Level B*/
+        0x00000f00,  /* Core 2, and Level A*/
+        0x00000f00,  /* Core 2, and Level B*/
+        0x0000f000,  /* Core 3, and Level A*/
+        0x0000f000,  /* Core 3, and Level B*/
+        0x0000ffff,  /* Level C */
 };
 
 unsigned int bank_partition[9] = {
@@ -251,7 +251,7 @@ static int do_add_pages(void)
 		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
 		//if ( PAGES_PER_COLOR && color>=16*2) {
 		//if (color>=32) {
-		if (color>=0) {
+		if (color>=16) {
 			add_page_to_color_list(page);
 	//		printk("add page(%d) = color %x, bank %x\n", color, page_color(page), page_bank(page));
 		} else{

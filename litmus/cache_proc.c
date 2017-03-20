@@ -88,14 +88,14 @@ u32 way_partition[4] = {
 };
 
 u32 way_partitions[9] = {
-	0xffff0003, /* cpu0 A */
-	0xffff0003, /* cpu0 B */
-	0xffff000C, /* cpu1 A */
-	0xffff000C, /* cpu1 B */
-	0xffff0030, /* cpu2 A */
-	0xffff0030, /* cpu2 B */
-	0xffff00C0, /* cpu3 A */
-	0xffff00C0, /* cpu3 B */
+	0xffff00ff, /* cpu0 A */
+	0xffff00ff, /* cpu0 B */
+	0xffff00ff, /* cpu1 A */
+	0xffff00ff, /* cpu1 B */
+	0xffff00ff, /* cpu2 A */
+	0xffff00ff, /* cpu2 B */
+	0xffff00ff, /* cpu3 A */
+	0xffff00ff, /* cpu3 B */
 	0xffffff00, /* lv C */
 };
 
