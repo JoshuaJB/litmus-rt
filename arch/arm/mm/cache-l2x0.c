@@ -653,6 +653,11 @@ static void __init l2c310_enable(void __iomem *base, u32 aux, unsigned num_lock)
 	 */
 	aux |= L310_AUX_CTRL_NS_LOCKDOWN;
 
+	/*
+	 * Always enable non-secure interrupt access control registers
+	 */
+	aux |= L220_AUX_CTRL_NS_INT_CTRL;
+
 	l2c_enable(base, aux, num_lock);
 
 	/* Read back resulting AUX_CTRL value as it could have been altered. */
