@@ -40,6 +40,7 @@ static int imx_mmdc_probe(struct platform_device *pdev)
 	reg = mmdc_base + MMDC_MDMISC;
 	/* Get ddr type */
 	val = readl_relaxed(reg);
+	pr_info("MMDC_MDMISC reg: 0x%08x\n", val);
 	ddr_type = (val & BM_MMDC_MDMISC_DDR_TYPE) >>
 		 BP_MMDC_MDMISC_DDR_TYPE;
 
