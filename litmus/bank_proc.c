@@ -1,7 +1,7 @@
 /*
  * bank_proc.c -- Implementation of the page coloring for cache and bank partition. 
  *                The file will keep a pool of colored pages. Users can require pages with 
- *		  specific color or bank number.
+ *                specific color or bank number.
  *                Part of the code is modified from Jonathan Herman's code  
  */
 #include <linux/init.h>
@@ -24,12 +24,13 @@
 // This Address Decoding is used in imx6-sabredsd platform
 #define BANK_MASK  0x38000000     
 #define BANK_SHIFT  27
-
 #define CACHE_MASK  0x0000f000      
 #define CACHE_SHIFT 12
 
 #define PAGES_PER_COLOR 2000
-#define PAGES_PER_COLOR_HALF 1000
+#define NUM_BANKS	8
+#define NUM_COLORS	16
+
 unsigned int NUM_PAGE_LIST;  //8*16
 
 unsigned int number_banks;
@@ -45,15 +46,15 @@ int refill_page_pool = 0;
 spinlock_t reclaim_lock;
 
 unsigned int set_partition[9] = {
-        0x0000000f,  /* Core 0, and Level A*/
-        0x0000000f,  /* Core 0, and Level B*/
-        0x000000f0,  /* Core 1, and Level A*/
-        0x000000f0,  /* Core 1, and Level B*/
-        0x00000f00,  /* Core 2, and Level A*/
-        0x00000f00,  /* Core 2, and Level B*/
-        0x0000f000,  /* Core 3, and Level A*/
-        0x0000f000,  /* Core 3, and Level B*/
-        0x0000ffff,  /* Level C */
+        0x00000003,  /* Core 0, and Level A*/
+        0x00000003,  /* Core 0, and Level B*/
+        0x0000000C,  /* Core 1, and Level A*/
+        0x0000000C,  /* Core 1, and Level B*/
+        0x00000030,  /* Core 2, and Level A*/
+        0x00000030,  /* Core 2, and Level B*/
+        0x000000C0,  /* Core 3, and Level A*/
+        0x000000C0,  /* Core 3, and Level B*/
+        0x0000ff00,  /* Level C */
 };
 
 unsigned int bank_partition[9] = {
@@ -76,8 +77,11 @@ unsigned int bank_index[9] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-struct mutex void_lockdown_proc;
+int node_index[9] = {
+    -1, -1, -1, -1, -1, -1, -1, -1, -1
+};
 
+struct mutex void_lockdown_proc;
 
 /*
  * Every page list should contain a lock, a list, and a number recording how many pages it store
@@ -97,7 +101,6 @@ static struct color_group *color_groups;
  */
 unsigned int counting_one_set(unsigned int v)
 {
-//    unsigned int v; // count the number of bits set in v
     unsigned int c; // c accumulates the total bits set in v
 
     for (c = 0; v; v >>= 1)
@@ -137,7 +140,101 @@ unsigned int num_by_bitmask_index(unsigned int bitmask, unsigned int index)
     return pos;
 }
 
+/* helper functions to find the next colored pool index */
+static inline unsigned int first_index(unsigned long node)
+{
+	unsigned int bank_no = 0, color_no = 0;
+	
+	while(bank_no < NUM_BANKS) {
+		if ((bank_partition[node]>>bank_no) & 0x1)
+			break;
+		bank_no++;
+	}
+	while(color_no < NUM_COLORS) {
+		if ((set_partition[node]>>color_no) & 0x1)
+			break;
+		color_no++;
+	}
+	return NUM_COLORS*bank_no + color_no; 
+}
 
+static inline unsigned int last_index(unsigned long node)
+{
+	unsigned int bank_no = 7, color_no = 15;
+	
+	while(bank_no >= 0) {
+		if ((bank_partition[node]>>bank_no) & 0x1)
+			break;
+		bank_no--;
+	}
+	while(color_no >= 0) {
+		if ((set_partition[node]>>color_no) & 0x1)
+			break;
+		color_no--;
+	}
+	return NUM_COLORS*bank_no + color_no; 
+}
+
+static inline unsigned int next_color(unsigned long node, unsigned int current_color)
+{
+	int try = 0, ret = 0;
+	current_color++;
+	if (current_color == NUM_COLORS) {
+		current_color = 0;
+		ret = 1;
+	}
+	
+	while (try < NUM_COLORS) {
+		if ((set_partition[node]>>current_color)&0x1)
+			break;
+		current_color++;
+		if (current_color == NUM_COLORS) {
+			current_color = 0;
+			ret = 1;
+		}
+		try++;
+	}
+	if (!ret)
+		return current_color;
+	else
+		return current_color + NUM_COLORS;
+}
+
+static inline unsigned int next_bank(unsigned long node, unsigned int current_bank)
+{
+	int try = 0;
+	current_bank++;
+	if (current_bank == NUM_BANKS) {
+		current_bank = 0;
+	}
+	
+	while (try < NUM_BANKS) {
+		if ((bank_partition[node]>>current_bank)&0x1)
+			break;
+		current_bank++;
+		if (current_bank == NUM_BANKS) {
+			current_bank = 0;
+		}
+		try++;
+	}
+	return current_bank;
+}
+
+static inline unsigned int get_next_index(unsigned long node, unsigned int current_index)
+{
+	unsigned int bank_no, color_no, color_ret, bank_ret;
+	bank_no = current_index>>4; // 2^4 = 16 colors
+	color_no = current_index - bank_no*NUM_COLORS;
+	bank_ret = bank_no;
+	color_ret = next_color(node, color_no);
+	if (color_ret >= NUM_COLORS) {
+		// next bank
+		color_ret -= NUM_COLORS;
+		bank_ret = next_bank(node, bank_no);
+	}
+
+	return bank_ret * NUM_COLORS + color_ret;
+}
 
 /* Decoding page color, 0~15 */ 
 static inline unsigned int page_color(struct page *page)
@@ -155,8 +252,6 @@ static inline unsigned int page_list_index(struct page *page)
 {
     unsigned int idx;  
     idx = (page_color(page) + page_bank(page)*(number_cachecolors));
-//    printk("address = %lx, ", page_to_phys(page));
-//    printk("color(%d), bank(%d), indx = %d\n", page_color(page), page_bank(page), idx);
 
     return idx; 
 }
@@ -187,10 +282,10 @@ static void show_nr_pages(void)
 	printk("show nr pages***************************************\n");
 	for (i = 0; i < NUM_PAGE_LIST; ++i) {
 		cgroup = &color_groups[i];
-		printk("(%03d) =  %03d, ", i, atomic_read(&cgroup->nr_pages));
-		if((i % 8) ==7){
+		printk("(%03ld) =  %03d, ", i, atomic_read(&cgroup->nr_pages));
+		if((i % 8) ==7) {
 		    printk("\n");
-                }
+		}
 	}
 }
 
@@ -214,11 +309,10 @@ void add_page_to_color_list(struct page *page)
  * Replenish the page pool. 
  * If the newly allocate page is what we want, it will be pushed to the correct page list
  * otherwise, it will be freed. 
+ * A user needs to invoke this function until the page pool has enough pages.
  */
 static int do_add_pages(void)
 {
-	//printk("LITMUS do add pages\n");
-	
 	struct page *page, *page_tmp;
 	LIST_HEAD(free_later);
 	unsigned long color;
@@ -227,16 +321,9 @@ static int do_add_pages(void)
 	int free_counter = 0;
 	unsigned long counter[128]= {0}; 
         
-        //printk("Before refill : \n");
-        //show_nr_pages();
-
 	// until all the page lists contain enough pages 
-	//for (i =0; i<5; i++) {
-	for (i=0; i< 1024*100;i++) {
-	//while (smallest_nr_pages() < PAGES_PER_COLOR) {
-       //         printk("smallest = %d\n", smallest_nr_pages());	
+	for (i=0; i< 1024*20;i++) {
 		page = alloc_page(GFP_HIGHUSER_MOVABLE);
-	    //    page = alloc_pages_exact_node(0, GFP_HIGHUSER_MOVABLE, 0);
 	
 		if (unlikely(!page)) {
 			printk(KERN_WARNING "Could not allocate pages.\n");
@@ -245,57 +332,20 @@ static int do_add_pages(void)
 		}
 		color = page_list_index(page);
 		counter[color]++;
-	//	printk("page(%d) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
-                //show_nr_pages();
-		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=32) {
-		//if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
-		//if ( PAGES_PER_COLOR && color>=16*2) {
-		//if (color>=32) {
-		if (color>=16) {
+		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=0) {
 			add_page_to_color_list(page);
-	//		printk("add page(%d) = color %x, bank %x\n", color, page_color(page), page_bank(page));
-		} else{
+		} else {
 			// Pages here will be freed later 
 			list_add_tail(&page->lru, &free_later);
 			free_counter++;
-		        //list_del(&page->lru);
-		//        __free_page(page);
-	//		printk("useless page(%d) = color %x, bank %x\n", color,  page_color(page), page_bank(page));
 		}
-               //show_nr_pages();
-                /*
-                if(free_counter >= PAGES_PER_COLOR)
-                {
-                    printk("free unwanted page list eariler");
-                    free_counter = 0;
-	            list_for_each_entry_safe(page, page_tmp, &free_later, lru) {
-		        list_del(&page->lru);
-		        __free_page(page);
-	            }
+	}
 
-                    show_nr_pages();
-                }
-                */
-        }
-/*        printk("page counter = \n");
-        for (i=0; i<128; i++)
-        {
-            printk("(%03d) = %4d, ", i , counter[i]);
-            if(i%8 == 7){
-                printk("\n");
-            }
-
-        }
-*/	
-        //printk("After refill : \n");
-        //show_nr_pages();
-#if 1
 	// Free the unwanted pages
 	list_for_each_entry_safe(page, page_tmp, &free_later, lru) {
 		list_del(&page->lru);
 		__free_page(page);
 	}
-#endif
 out:
         return ret;
 }
@@ -306,7 +356,7 @@ out:
  * This function should not be accessed by others directly. 
  * 
  */ 
-static struct  page *new_alloc_page_color( unsigned long color, int do_refill)
+static struct page *new_alloc_page_color( unsigned long color)
 {
 //	printk("allocate new page color = %d\n", color);	
 	struct color_group *cgroup;
@@ -314,7 +364,6 @@ static struct  page *new_alloc_page_color( unsigned long color, int do_refill)
 		
 	if( (color <0) || (color)>(number_cachecolors*number_banks -1)) {
 		TRACE_CUR("Wrong color %lu\n", color);	
-//		printk(KERN_WARNING "Wrong color %lu\n", color);
 		goto out;
 	}
 
@@ -323,7 +372,6 @@ static struct  page *new_alloc_page_color( unsigned long color, int do_refill)
 	spin_lock(&cgroup->lock);
 	if (unlikely(!atomic_read(&cgroup->nr_pages))) {
 		TRACE_CUR("No free %lu colored pages.\n", color);
-//		printk(KERN_WARNING "no free %lu colored pages.\n", color);
 		goto out_unlock;
 	}
 	rPage = list_first_entry(&cgroup->list, struct page, lru);
@@ -335,19 +383,12 @@ static struct  page *new_alloc_page_color( unsigned long color, int do_refill)
 out_unlock:
 	spin_unlock(&cgroup->lock);
 out:
-	if( smallest_nr_pages() == 0 && do_refill == 1)
-        {
-		do_add_pages();
-       //     printk("ERROR(bank_proc.c) = We don't have enough pages in bank_proc.c\n");        
-        
-        }
-		
 	return rPage;
 }
 
 struct page* get_colored_page(unsigned long color)
 {
-	return new_alloc_page_color(color, 1);
+	return new_alloc_page_color(color);
 }
 
 /*
@@ -364,23 +405,32 @@ struct page* get_colored_page(unsigned long color)
  */
 struct page *new_alloc_page(struct page *page, unsigned long node, int **x)
 {
-//	printk("allocate new page node = %d\n", node);	
-//	return alloc_pages_exact_node(node, GFP_HIGHUSER_MOVABLE, 0);
-	struct color_group *cgroup;
 	struct page *rPage = NULL;
-	unsigned int color;
+	int try = 0;
+	unsigned int idx;
 	
+	if (node_index[node] == -1)
+		idx = first_index(node);
+	else
+		idx = node_index[node];
+	
+	BUG_ON(idx<0 || idx>127);
+	rPage =  new_alloc_page_color(idx);
+	if (node_index[node] == last_index(node))
+		node_index[node] = first_index(node);
+	else
+		node_index[node]++;
 
-    unsigned int idx = 0;
-	do {
-        idx += num_by_bitmask_index(set_partition[node], set_index[node]);
-        idx += number_cachecolors* num_by_bitmask_index(bank_partition[node], bank_index[node]);
-		rPage =  new_alloc_page_color(idx, 0);
-	} while (rPage == NULL);
-        
-            
-        set_index[node] = (set_index[node]+1) % counting_one_set(set_partition[node]);
-        bank_index[node] = (bank_index[node]+1) % counting_one_set(bank_partition[node]);
+	while (!rPage)  {
+		try++;
+		if (try>=256)
+			break;
+		idx = get_next_index(node, idx);
+		printk(KERN_ALERT "try = %d out of page! requesting node  = %ld, idx = %d\n", try, node, idx);
+		BUG_ON(idx<0 || idx>127);
+		rPage = new_alloc_page_color(idx);
+	}
+	node_index[node] = idx;
 	return rPage; 
 }
 
@@ -391,20 +441,19 @@ struct page *new_alloc_page(struct page *page, unsigned long node, int **x)
 void reclaim_page(struct page *page)
 {
 	const unsigned long color = page_list_index(page);
-	unsigned long nr_reclaimed = 0;
 	spin_lock(&reclaim_lock);
     	put_page(page);
 	add_page_to_color_list(page);
 
 	spin_unlock(&reclaim_lock);
-	printk("Reclaimed page(%d) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
+	printk("Reclaimed page(%ld) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
 }
 
 
 /*
  * Initialize the numbers of banks and cache colors 
  */ 
-static int __init init_variables(void)
+static void __init init_variables(void)
 {
 	number_banks = counting_one_set(BANK_MASK); 
 	number_banks = two_exp(number_banks); 
@@ -489,7 +538,7 @@ out:
 int show_page_pool_handler(struct ctl_table *table, int write, void __user *buffer,
 		size_t *lenp, loff_t *ppos)
 {
-	int ret = 0, i = 0;
+	int ret = 0;
 	mutex_lock(&void_lockdown_proc);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
@@ -505,13 +554,14 @@ out:
 int refill_page_pool_handler(struct ctl_table *table, int write, void __user *buffer,
 		size_t *lenp, loff_t *ppos)
 {
-	int ret = 0, i = 0;
+	int ret = 0;
 	mutex_lock(&void_lockdown_proc);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
 	if (write) {
             do_add_pages();
+			show_nr_pages();
 	}
 out:
 	mutex_unlock(&void_lockdown_proc);
