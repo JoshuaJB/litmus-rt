@@ -1746,6 +1746,22 @@ void *vmalloc(unsigned long size)
 EXPORT_SYMBOL(vmalloc);
 
 /**
+ *	vmalloc_color  -  allocate virtually contiguous memory from a dedicated free_area
+ *	@size:		allocation size
+ *	Allocate enough pages to cover @size from the page level
+ *	allocator and map them into contiguous kernel virtual space.
+ *
+ *	For tight control over page level allocator and protection flags
+ *	use __vmalloc() instead.
+ */
+void *vmalloc_color(unsigned long size)
+{
+	return __vmalloc_node_flags(size, NUMA_NO_NODE,
+				    GFP_KERNEL | __GFP_HIGHMEM | GFP_COLOR);
+}
+EXPORT_SYMBOL(vmalloc_color);
+
+/**
  *	vzalloc - allocate virtually contiguous memory with zero fill
  *	@size:	allocation size
  *	Allocate enough pages to cover @size from the page level

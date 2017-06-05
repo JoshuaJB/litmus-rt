@@ -1183,9 +1183,6 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 
 	if (order == 0 && color_req == 1) {
 		int found = 0;
-		/* Colored page request with order = 0 */
-		if (is_realtime(current))
-			printk(KERN_INFO "COLORED PAGE IS REQUESTED on CPU%d\n", cpu);
 		/* Find a page of the appropriate size in the preferred list */
 		for (current_order = order; current_order < MAX_PARTITIONED_ORDER; ++current_order) {
 			area = &(zone->free_area_d[cpu][current_order]);
