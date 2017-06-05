@@ -71,6 +71,26 @@
 #include <asm/div64.h>
 #include "internal.h"
 
+// This Address Decoding is used in imx6-sabredsd platform
+#define BANK_MASK  0x38000000     
+#define BANK_SHIFT  27
+
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+#define MAX_COLOR_NODE	128
+
+/* Decoding page color, 0~15 */ 
+static inline unsigned int page_color(struct page *page)
+{
+	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
+}
+
+/* Decoding page bank number, 0~7 */ 
+static inline unsigned int page_bank(struct page *page)
+{
+	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
+}
+
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
 #define MIN_PERCPU_PAGELIST_FRACTION	(8)
@@ -583,76 +603,153 @@ static inline void __free_one_page(struct page *page,
 	unsigned long combined_idx;
 	unsigned long uninitialized_var(buddy_idx);
 	struct page *buddy;
-	int max_order = MAX_ORDER;
+	int max_order, parti_no;
+	
+	parti_no = bank_to_partition(page_bank(page));
+	BUG_ON(parti_no < 0 || parti_no > NR_CPUS);
+	if (parti_no < 0 || parti_no > NR_CPUS)
+		printk(KERN_ALERT "PART_NO %d\n", parti_no);
+	
+	if (parti_no < NR_CPUS)
+		printk(KERN_ALERT "pfn = %lx, part_no = %d order = %d\n", pfn, parti_no, order);
+	
+	if (parti_no == NR_CPUS) {
+		max_order = MAX_ORDER;
 
-	VM_BUG_ON(!zone_is_initialized(zone));
-	VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
+		VM_BUG_ON(!zone_is_initialized(zone));
+		VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
 
-	VM_BUG_ON(migratetype == -1);
-	if (is_migrate_isolate(migratetype)) {
-		/*
-		 * We restrict max order of merging to prevent merge
-		 * between freepages on isolate pageblock and normal
-		 * pageblock. Without this, pageblock isolation
-		 * could cause incorrect freepage accounting.
-		 */
-		max_order = min(MAX_ORDER, pageblock_order + 1);
-	} else {
-		__mod_zone_freepage_state(zone, 1 << order, migratetype);
-	}
-
-	page_idx = pfn & ((1 << max_order) - 1);
-
-	VM_BUG_ON_PAGE(page_idx & ((1 << order) - 1), page);
-	VM_BUG_ON_PAGE(bad_range(zone, page), page);
-
-	while (order < max_order - 1) {
-		buddy_idx = __find_buddy_index(page_idx, order);
-		buddy = page + (buddy_idx - page_idx);
-		if (!page_is_buddy(page, buddy, order))
-			break;
-		/*
-		 * Our buddy is free or it is CONFIG_DEBUG_PAGEALLOC guard page,
-		 * merge with it and move up one order.
-		 */
-		if (page_is_guard(buddy)) {
-			clear_page_guard(zone, buddy, order, migratetype);
+		VM_BUG_ON(migratetype == -1);
+		if (is_migrate_isolate(migratetype)) {
+			/*
+			 * We restrict max order of merging to prevent merge
+			 * between freepages on isolate pageblock and normal
+			 * pageblock. Without this, pageblock isolation
+			 * could cause incorrect freepage accounting.
+			 */
+			max_order = min(MAX_ORDER, pageblock_order + 1);
 		} else {
-			list_del(&buddy->lru);
-			zone->free_area[order].nr_free--;
-			rmv_page_order(buddy);
+			__mod_zone_freepage_state(zone, 1 << order, migratetype);
 		}
-		combined_idx = buddy_idx & page_idx;
-		page = page + (combined_idx - page_idx);
-		page_idx = combined_idx;
-		order++;
-	}
-	set_page_order(page, order);
 
-	/*
-	 * If this is not the largest possible page, check if the buddy
-	 * of the next-highest order is free. If it is, it's possible
-	 * that pages are being freed that will coalesce soon. In case,
-	 * that is happening, add the free page to the tail of the list
-	 * so it's less likely to be used soon and more likely to be merged
-	 * as a higher order page
-	 */
-	if ((order < MAX_ORDER-2) && pfn_valid_within(page_to_pfn(buddy))) {
-		struct page *higher_page, *higher_buddy;
-		combined_idx = buddy_idx & page_idx;
-		higher_page = page + (combined_idx - page_idx);
-		buddy_idx = __find_buddy_index(combined_idx, order + 1);
-		higher_buddy = higher_page + (buddy_idx - combined_idx);
-		if (page_is_buddy(higher_page, higher_buddy, order + 1)) {
-			list_add_tail(&page->lru,
-				&zone->free_area[order].free_list[migratetype]);
-			goto out;
+		page_idx = pfn & ((1 << max_order) - 1);
+
+		VM_BUG_ON_PAGE(page_idx & ((1 << order) - 1), page);
+		VM_BUG_ON_PAGE(bad_range(zone, page), page);
+
+		while (order < max_order - 1) {
+			buddy_idx = __find_buddy_index(page_idx, order);
+			buddy = page + (buddy_idx - page_idx);
+			if (!page_is_buddy(page, buddy, order))
+				break;
+			/*
+			 * Our buddy is free or it is CONFIG_DEBUG_PAGEALLOC guard page,
+			 * merge with it and move up one order.
+			 */
+			if (page_is_guard(buddy)) {
+				clear_page_guard(zone, buddy, order, migratetype);
+			} else {
+				list_del(&buddy->lru);
+				zone->free_area[order].nr_free--;
+				rmv_page_order(buddy);
+			}
+			combined_idx = buddy_idx & page_idx;
+			page = page + (combined_idx - page_idx);
+			page_idx = combined_idx;
+			order++;
 		}
-	}
+		set_page_order(page, order);
 
-	list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
+		/*
+		 * If this is not the largest possible page, check if the buddy
+		 * of the next-highest order is free. If it is, it's possible
+		 * that pages are being freed that will coalesce soon. In case,
+		 * that is happening, add the free page to the tail of the list
+		 * so it's less likely to be used soon and more likely to be merged
+		 * as a higher order page
+		 */
+		if ((order < MAX_ORDER-2) && pfn_valid_within(page_to_pfn(buddy))) {
+			struct page *higher_page, *higher_buddy;
+			combined_idx = buddy_idx & page_idx;
+			higher_page = page + (combined_idx - page_idx);
+			buddy_idx = __find_buddy_index(combined_idx, order + 1);
+			higher_buddy = higher_page + (buddy_idx - combined_idx);
+			if (page_is_buddy(higher_page, higher_buddy, order + 1)) {
+				list_add_tail(&page->lru,
+					&zone->free_area[order].free_list[migratetype]);
+				goto out;
+			}
+		}
+
+		list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
 out:
-	zone->free_area[order].nr_free++;
+		zone->free_area[order].nr_free++;
+	} else {
+		max_order = MAX_PARTITIONED_ORDER;
+
+		VM_BUG_ON(!zone_is_initialized(zone));
+		VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
+
+		VM_BUG_ON(migratetype == -1);
+		if (is_migrate_isolate(migratetype)) {
+			max_order = min(MAX_PARTITIONED_ORDER, pageblock_order + 1);
+		} else {
+			__mod_zone_freepage_state(zone, 1 << order, migratetype);
+		}
+
+		page_idx = pfn & ((1 << max_order) - 1);
+
+		VM_BUG_ON_PAGE(page_idx & ((1 << order) - 1), page);
+		VM_BUG_ON_PAGE(bad_range(zone, page), page);
+
+		while (order < max_order - 1) {
+			buddy_idx = __find_buddy_index(page_idx, order);
+			buddy = page + (buddy_idx - page_idx);
+			if (!page_is_buddy(page, buddy, order))
+				break;
+
+			if (page_is_guard(buddy)) {
+				clear_page_guard(zone, buddy, order, migratetype);
+			} else {
+				list_del(&buddy->lru);
+				zone->free_area_d[parti_no][order].nr_free--;
+				rmv_page_order(buddy);
+			}
+			combined_idx = buddy_idx & page_idx;
+			page = page + (combined_idx - page_idx);
+			page_idx = combined_idx;
+			order++;
+		}
+		set_page_order(page, order);
+
+		if ((order < MAX_PARTITIONED_ORDER-2) && pfn_valid_within(page_to_pfn(buddy))) {
+			struct page *higher_page, *higher_buddy;
+			combined_idx = buddy_idx & page_idx;
+			higher_page = page + (combined_idx - page_idx);
+			buddy_idx = __find_buddy_index(combined_idx, order + 1);
+			higher_buddy = higher_page + (buddy_idx - combined_idx);
+			if (page_is_buddy(higher_page, higher_buddy, order + 1)) {
+				list_add_tail(&page->lru,
+					&zone->free_area_d[parti_no][order].free_list[migratetype]);
+				zone->free_area_d[parti_no][order].nr_free++;
+				return;
+			}
+		}
+
+		if (order >= MAX_PARTITIONED_ORDER) {
+			int n_idx = 0;
+			struct page *lower_page;
+			for (n_idx = 0 ; n_idx < (1 << (order - MAX_PARTITIONED_ORDER + 1)); n_idx++) {
+				lower_page = page + (n_idx << (MAX_PARTITIONED_ORDER - 1));
+				set_page_order(lower_page, MAX_PARTITIONED_ORDER-1);
+				list_add(&lower_page->lru, &zone->free_area_d[parti_no][MAX_PARTITIONED_ORDER-1].free_list[migratetype]);
+				zone->free_area_d[parti_no][MAX_PARTITIONED_ORDER-1].nr_free++;
+			}
+		} else {
+			list_add(&page->lru, &zone->free_area_d[parti_no][order].free_list[migratetype]);
+			zone->free_area_d[parti_no][order].nr_free++;
+		}
+	}	
 }
 
 static inline int free_pages_check(struct page *page)
@@ -997,34 +1094,140 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 	return 0;
 }
 
+/* Kernel page coloring */
+
+/* build colored page list */
+static void build_colored_pages(struct zone *zone, struct page *page, int order)
+{
+	int i, color, bank;
+	
+	list_del(&page->lru);
+	zone->free_area[order].nr_free--;
+	
+	/* insert pages to zone->color_list[] */
+	for (i = 0; i < (1<<order); i++) {
+		int node;
+		color = page_color(&page[i]);
+		bank = page_bank(&page[i]);
+		node = bank*MAX_NUM_COLOR+color;
+		
+		INIT_LIST_HEAD(&page[i].lru);
+		list_add_tail(&page[i].lru, &zone->color_list[node]);
+		bitmap_set(zone->color_map, node, 1);
+		zone->free_area[0].nr_free++;
+		rmv_page_order(&page[i]);
+	}
+}
+
+int color_seq_index[9] = {
+        0,  /* Core 0, and Level A*/
+        0,  /* Core 0, and Level B*/
+        0,  /* Core 1, and Level A*/
+        0,  /* Core 1, and Level B*/
+        0,  /* Core 2, and Level A*/
+        0,  /* Core 2, and Level B*/
+        0,  /* Core 3, and Level A*/
+        0,  /* Core 3, and Level B*/
+        0,  /* Level C */
+};
+
+/* return a colored page */
+static inline struct page *get_colored_page(struct zone *zone, unsigned long req_color_map[BITS_TO_LONGS(MAX_COLOR_NODE)], int order, int partition)
+{
+	struct page *page;
+	unsigned int color, bank, index;
+	int i;
+	DECLARE_BITMAP(candidate_bit, MAX_COLOR_NODE);
+	
+	/* if req_color_map does not exist in zone, return NULL */
+	if (!bitmap_intersects(zone->color_map, req_color_map, MAX_COLOR_NODE))
+		return NULL;
+	
+	bitmap_and(candidate_bit, zone->color_map, req_color_map, MAX_COLOR_NODE);
+	index = color_seq_index[partition];
+	
+	for_each_set_bit(i, candidate_bit, MAX_COLOR_NODE) {
+		if (index-- <= 0)
+			break;
+	}
+	
+	BUG_ON(i >= MAX_COLOR_NODE);
+	BUG_ON(list_empty(&zone->color_list[i]));
+	
+	page = list_entry(zone->color_list[i].next, struct page, lru);
+	
+	list_del(&page->lru);
+	
+	if (list_empty(&zone->color_list[i]))
+		bitmap_clear(zone->color_map, i, 1);
+	
+	zone->free_area[0].nr_free--;
+	color = page_color(page);
+	bank = page_bank(page);
+	printk(KERN_INFO "color=%d, bank=%d allocated\n", color, bank);
+	return page;
+}
+
 /*
  * Go through the free lists for the given migratetype and remove
  * the smallest available page from the freelists
  */
 static inline
 struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
-						int migratetype)
+						int migratetype, int color_req)
 {
 	unsigned int current_order;
 	struct free_area *area;
 	struct page *page;
+	int cpu = raw_smp_processor_id();
 
-	/* Find a page of the appropriate size in the preferred list */
-	for (current_order = order; current_order < MAX_ORDER; ++current_order) {
-		area = &(zone->free_area[current_order]);
-		if (list_empty(&area->free_list[migratetype]))
-			continue;
+	if (order == 0 && color_req == 1) {
+		int found = 0;
+		/* Colored page request with order = 0 */
+		if (is_realtime(current))
+			printk(KERN_INFO "COLORED PAGE IS REQUESTED on CPU%d\n", cpu);
+		/* Find a page of the appropriate size in the preferred list */
+		for (current_order = order; current_order < MAX_PARTITIONED_ORDER; ++current_order) {
+			area = &(zone->free_area_d[cpu][current_order]);
+			if (list_empty(&area->free_list[migratetype]))
+				continue;
+			
+			page = list_entry(area->free_list[migratetype].next,
+								struct page, lru);
+			if (is_in_llc_partition(page, cpu))
+				found = 1;
+			
+			while(!found) {
+				page = list_next_entry(page, lru);
+				if (is_in_llc_partition(page, cpu))
+					found = 1;
+			}
+			list_del(&page->lru);
+			rmv_page_order(page);
+			area->nr_free--;
+			expand(zone, page, order, current_order, area, migratetype);
+			set_freepage_migratetype(page, migratetype);
+			return page;
+		}
+	} else {
+		/* Buddy allocator */
+		/* Find a page of the appropriate size in the preferred list */
+		for (current_order = order; current_order < MAX_ORDER; ++current_order) {
+			area = &(zone->free_area[current_order]);
+			if (list_empty(&area->free_list[migratetype]))
+				continue;
 
-		page = list_entry(area->free_list[migratetype].next,
-							struct page, lru);
-		list_del(&page->lru);
-		rmv_page_order(page);
-		area->nr_free--;
-		expand(zone, page, order, current_order, area, migratetype);
-		set_freepage_migratetype(page, migratetype);
-		return page;
+			page = list_entry(area->free_list[migratetype].next,
+								struct page, lru);
+			list_del(&page->lru);
+			rmv_page_order(page);
+			area->nr_free--;
+			expand(zone, page, order, current_order, area, migratetype);
+			set_freepage_migratetype(page, migratetype);
+			return page;
+		}
 	}
-
+	
 	return NULL;
 }
 
@@ -1050,7 +1253,7 @@ static int fallbacks[MIGRATE_TYPES][4] = {
 static struct page *__rmqueue_cma_fallback(struct zone *zone,
 					unsigned int order)
 {
-	return __rmqueue_smallest(zone, order, MIGRATE_CMA);
+	return __rmqueue_smallest(zone, order, MIGRATE_CMA, 0);
 }
 #else
 static inline struct page *__rmqueue_cma_fallback(struct zone *zone,
@@ -1291,12 +1494,12 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
  * Call me with the zone->lock already held.
  */
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
-						int migratetype)
+						int migratetype, int color_req)
 {
 	struct page *page;
 
 retry_reserve:
-	page = __rmqueue_smallest(zone, order, migratetype);
+	page = __rmqueue_smallest(zone, order, migratetype, color_req);
 
 	if (unlikely(!page) && migratetype != MIGRATE_RESERVE) {
 		if (migratetype == MIGRATE_MOVABLE)
@@ -1333,7 +1536,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
-		struct page *page = __rmqueue(zone, order, migratetype);
+		struct page *page = __rmqueue(zone, order, migratetype, 1);
 		if (unlikely(page == NULL))
 			break;
 
@@ -1543,6 +1746,8 @@ void free_hot_cold_page(struct page *page, bool cold)
 	unsigned long flags;
 	unsigned long pfn = page_to_pfn(page);
 	int migratetype;
+	unsigned int cpu;
+	int is_local, is_in_pcp;
 
 	if (!free_pages_prepare(page, 0))
 		return;
@@ -1566,19 +1771,33 @@ void free_hot_cold_page(struct page *page, bool cold)
 		}
 		migratetype = MIGRATE_MOVABLE;
 	}
-
-	pcp = &this_cpu_ptr(zone->pageset)->pcp;
-	if (!cold)
-		list_add(&page->lru, &pcp->lists[migratetype]);
+	
+	cpu = bank_to_partition(page_bank(page));
+	BUG_ON(cpu<0);
+	
+	if (cpu == smp_processor_id())
+			is_local = 1;
 	else
-		list_add_tail(&page->lru, &pcp->lists[migratetype]);
-	pcp->count++;
-	if (pcp->count >= pcp->high) {
-		unsigned long batch = READ_ONCE(pcp->batch);
-		free_pcppages_bulk(zone, batch, pcp);
-		pcp->count -= batch;
+			is_local = 0;
+	
+	is_in_pcp = is_in_llc_partition(page, smp_processor_id());
+	if (cpu != NR_CPUS)
+		printk(KERN_ALERT "CPU%d Free order-0 page bank = %d, color = %d, is_local %d is_in_pcp %d\n", smp_processor_id(), page_bank(page), page_color(page), is_local, is_in_pcp);
+	if (is_local && is_in_pcp) {
+		pcp = &this_cpu_ptr(zone->pageset)->pcp;
+		if (!cold)
+			list_add(&page->lru, &pcp->lists[migratetype]);
+		else
+			list_add_tail(&page->lru, &pcp->lists[migratetype]);
+		pcp->count++;
+		if (pcp->count >= pcp->high) {
+			unsigned long batch = READ_ONCE(pcp->batch);
+			free_pcppages_bulk(zone, batch, pcp);
+			pcp->count -= batch;
+		}
+	} else {
+		__free_page(page);
 	}
-
 out:
 	local_irq_restore(flags);
 }
@@ -1706,8 +1925,9 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 	unsigned long flags;
 	struct page *page;
 	bool cold = ((gfp_flags & __GFP_COLD) != 0);
-
-	if (likely(order == 0)) {
+	bool colored_req = ((gfp_flags & __GFP_COLOR) != 0);
+	
+	if (likely(order == 0) && colored_req) {
 		struct per_cpu_pages *pcp;
 		struct list_head *list;
 
@@ -1744,7 +1964,7 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 			WARN_ON_ONCE(order > 1);
 		}
 		spin_lock_irqsave(&zone->lock, flags);
-		page = __rmqueue(zone, order, migratetype);
+		page = __rmqueue(zone, order, migratetype, 0);
 		spin_unlock(&zone->lock);
 		if (!page)
 			goto failed;
@@ -4231,9 +4451,22 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 static void __meminit zone_init_free_lists(struct zone *zone)
 {
 	unsigned int order, t;
+	int cpu;
+	
 	for_each_migratetype_order(order, t) {
 		INIT_LIST_HEAD(&zone->free_area[order].free_list[t]);
 		zone->free_area[order].nr_free = 0;
+	}
+	
+	/* Initialize per-partition free_area data structures */
+	for (cpu = 0; cpu < NR_CPUS; cpu++) {
+		for (order = 0; order < MAX_PARTITIONED_ORDER; order++) {
+			for (t = 0; t < MIGRATE_TYPES; t++) {
+				INIT_LIST_HEAD(&zone->free_area_d[cpu][order].free_list[t]);
+				zone->free_area_d[cpu][order].nr_free = 0;
+				printk(KERN_ALERT "free_area_d[%d][%d].free_list[%d] init.\n", cpu, order, t);
+			}
+		}
 	}
 }
 

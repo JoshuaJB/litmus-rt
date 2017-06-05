@@ -120,26 +120,6 @@ unsigned int two_exp(unsigned int e)
     return v;
 }
 
-unsigned int num_by_bitmask_index(unsigned int bitmask, unsigned int index)
-{
-    unsigned int pos = 0;
-
-    while(true)
-    {
-        if(index ==0 && (bitmask & 1)==1)
-        {
-            break;
-        }
-        if(index !=0 && (bitmask & 1)==1){
-            index--;
-        }
-        pos++;
-        bitmask = bitmask >>1;
-
-    }
-    return pos;
-}
-
 /* helper functions to find the next colored pool index */
 static inline unsigned int first_index(unsigned long node)
 {
@@ -160,7 +140,7 @@ static inline unsigned int first_index(unsigned long node)
 
 static inline unsigned int last_index(unsigned long node)
 {
-	unsigned int bank_no = 7, color_no = 15;
+	unsigned int bank_no = NUM_BANKS-1, color_no = NUM_COLORS-1;
 	
 	while(bank_no >= 0) {
 		if ((bank_partition[node]>>bank_no) & 0x1)

@@ -38,11 +38,13 @@
 /* For page coloring - This address decoding is used in imx6-sabresd
  * platform without bank interleaving .
  */
-#define BANK_MASK  0x38000000     
-#define BANK_SHIFT  27
-
-#define CACHE_MASK  0x0000f000      
-#define CACHE_SHIFT 12
+#define BANK_MASK				0x38000000     
+#define BANK_SHIFT 				27
+#define CACHE_MASK 				0x0000f000      
+#define CACHE_SHIFT				12
+#define MAX_NUM_COLOR			16
+#define MAX_NUM_BANK			8
+#define MAX_PARTITIONED_ORDER	3
 
 enum {
 	MIGRATE_UNMOVABLE,
@@ -485,7 +487,8 @@ struct zone {
 	ZONE_PADDING(_pad1_)
 	/* free areas of different sizes */
 	struct free_area	free_area[MAX_ORDER];
-
+	struct free_area	free_area_d[NR_CPUS][MAX_PARTITIONED_ORDER];
+	
 	/* zone flags, see below */
 	unsigned long		flags;
 
@@ -532,7 +535,9 @@ struct zone {
 	/* Set to true when the PG_migrate_skip bits should be cleared */
 	bool			compact_blockskip_flush;
 #endif
-
+	
+	struct list_head	color_list[MAX_NUM_COLOR * MAX_NUM_BANK];
+	DECLARE_BITMAP(color_map, MAX_NUM_COLOR*MAX_NUM_BANK);
 	ZONE_PADDING(_pad3_)
 	/* Zone statistics */
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];

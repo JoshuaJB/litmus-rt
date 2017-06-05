@@ -956,6 +956,67 @@ static void pagetypeinfo_showfree_print(struct seq_file *m,
 	}
 }
 
+static void pagetypeinfo_showpartitionfree_print(struct seq_file *m,
+					pg_data_t *pgdat, struct zone *zone, int cpu)
+{
+	int order, mtype;
+
+	for (mtype = 0; mtype < MIGRATE_TYPES; mtype++) {
+		seq_printf(m, "Node %4d, zone %8s, type %12s      ",
+					pgdat->node_id,
+					zone->name,
+					migratetype_names[mtype]);
+		for (order = 0; order < MAX_PARTITIONED_ORDER; ++order) {
+			unsigned long freecount = 0;
+			struct free_area *area;
+			struct list_head *curr;
+
+			area = &(zone->free_area_d[cpu][order]);
+			
+			list_for_each(curr, &area->free_list[mtype])
+				freecount++;
+			seq_printf(m, "%6lu ", freecount);
+		}
+		seq_putc(m, '\n');
+	}
+}
+
+static void walk_zones_in_node_in_partition(struct seq_file *m, pg_data_t *pgdat,
+		int cpu, void (*print)(struct seq_file *m, pg_data_t *, struct zone *, int))
+{
+	struct zone *zone;
+	struct zone *node_zones = pgdat->node_zones;
+	unsigned long flags;
+
+	for (zone = node_zones; zone - node_zones < MAX_NR_ZONES; ++zone) {
+		if (!populated_zone(zone))
+			continue;
+
+		spin_lock_irqsave(&zone->lock, flags);
+		print(m, pgdat, zone, cpu);
+		spin_unlock_irqrestore(&zone->lock, flags);
+	}
+}
+
+/* Print out the free pages at each order for each migatetype and partition */
+static int pagetypeinfo_showpartitioned(struct seq_file *m, void *arg)
+{
+	int order, cpu;
+	pg_data_t *pgdat = (pg_data_t *)arg;
+
+	for_each_online_cpu(cpu) {
+		/* Print header */
+		seq_putc(m, '\n');
+		seq_printf(m, "CPU%d %-43s ", cpu, "free pages count per migrate type at order");
+		for (order = 0; order < MAX_PARTITIONED_ORDER; ++order)
+			seq_printf(m, "%6d ", order);
+		seq_putc(m, '\n');
+
+		walk_zones_in_node_in_partition(m, pgdat, cpu, pagetypeinfo_showpartitionfree_print);
+	}
+	return 0;
+}
+
 /* Print out the free pages at each order for each migatetype */
 static int pagetypeinfo_showfree(struct seq_file *m, void *arg)
 {
@@ -1138,7 +1199,7 @@ static int pagetypeinfo_show(struct seq_file *m, void *arg)
 	pagetypeinfo_showfree(m, pgdat);
 	pagetypeinfo_showblockcount(m, pgdat);
 	pagetypeinfo_showmixedcount(m, pgdat);
-
+	pagetypeinfo_showpartitioned(m, pgdat);
 	return 0;
 }
 
@@ -1180,10 +1241,27 @@ static const struct file_operations pagetypeinfo_file_ops = {
 	.release	= seq_release,
 };
 
+#define BANK_MASK  0x38000000     
+#define BANK_SHIFT  27
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+/* Decoding page bank number, 0~7 */ 
+static inline unsigned int page_bank(struct page *page)
+{
+	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
+}
+/* Decoding page color, 0~15 */ 
+static inline unsigned int page_color(struct page *page)
+{
+	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
+}
+
 static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 							struct zone *zone)
 {
 	int i;
+	int mtype;
+	
 	seq_printf(m, "Node %d, zone %8s", pgdat->node_id, zone->name);
 	seq_printf(m,
 		   "\n  pages free     %lu"
@@ -1232,6 +1310,15 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 		seq_printf(m, "\n  vm stats threshold: %d",
 				pageset->stat_threshold);
 #endif
+		/* test */
+		seq_printf(m, "\n");
+		for (mtype = 0; mtype < MIGRATE_PCPTYPES; mtype++) {
+			struct page *p;
+			list_for_each_entry(p, &pageset->pcp.lists[mtype], lru) {
+				if (p)
+					seq_printf(m, "page bank = %d color = %d\n", page_bank(p), page_color(p));
+			}
+		}
 	}
 	seq_printf(m,
 		   "\n  all_unreclaimable: %u"

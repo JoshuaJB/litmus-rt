@@ -343,14 +343,18 @@ asmlinkage long sys_reservation_destroy(unsigned int reservation_id, int cpu)
 
 static unsigned long color_mask;
 
-static inline unsigned long page_color(struct page *page)
-{
-    return ((page_to_phys(page) & color_mask) >> PAGE_SHIFT);
-}
-
 extern int isolate_lru_page(struct page *page);
 extern void putback_movable_page(struct page *page);
 extern struct page *new_alloc_page(struct page *page, unsigned long node, int **x);
+
+static struct page *alloc_colored_page(struct page *page, unsigned long node, int **result)
+{
+	struct page *newpage;
+	
+	newpage = alloc_pages(GFP_HIGHUSER_MOVABLE|GFP_COLOR, 0);
+	
+	return newpage;
+}
 
 #define INVALID_PFN				(0xffffffff)
 LIST_HEAD(shared_lib_pages);
@@ -479,7 +483,7 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	/* Migrate private pages */
 	if (!list_empty(&pagelist)) {
-		ret = migrate_pages(&pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
+		ret = migrate_pages(&pagelist, alloc_colored_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
 		nr_not_migrated = ret;
 		if (ret) {
@@ -489,7 +493,7 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	/* Replicate shared pages */
 	if (!list_empty(&task_shared_pagelist)) {
-		ret = replicate_pages(&task_shared_pagelist, new_alloc_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
+		ret = replicate_pages(&task_shared_pagelist, alloc_colored_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
 		nr_not_migrated += ret;
 		if (ret) {
@@ -501,10 +505,25 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d nr_not_migrated = %d\n", nr_pages, nr_failed, nr_not_migrated);
 	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_shared_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_shared_pages, nr_failed, nr_not_migrated);
-
-	flush_cache(1);
 	
 	return nr_not_migrated;
+}
+
+#define BANK_MASK  0x38000000     
+#define BANK_SHIFT  27
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+
+/* Decoding page color, 0~15 */ 
+static inline unsigned int page_color(struct page *page)
+{
+	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
+}
+
+/* Decoding page bank number, 0~7 */ 
+static inline unsigned int page_bank(struct page *page)
+{
+	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
 }
 
 /* sys_test_call() is a test system call for debugging */
@@ -549,7 +568,7 @@ asmlinkage long sys_test_call(unsigned int param)
 					continue;
 				}
 				
-				TRACE_TASK(current, "addr: %08x, phy: %08x, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
+				TRACE_TASK(current, "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
 				put_page(old_page);
 			}
 			vma_itr = vma_itr->vm_next;

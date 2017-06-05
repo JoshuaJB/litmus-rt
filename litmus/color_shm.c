@@ -264,10 +264,10 @@ static int litmus_color_shm_mmap(struct file *filp, struct vm_area_struct *vma)
 	TRACE_CUR("flags=0x%lx prot=0x%lx\n", vma->vm_flags,
 			pgprot_val(vma->vm_page_prot));
 out:
-	color_param.color == 0x00000000;
-	color_param.bank == 0x00000000;
-	color_offset.offset == 0xffffffff;
-	color_offset.lock == -1;
+	color_param.color = 0x00000000;
+	color_param.bank = 0x00000000;
+	color_offset.offset = 0xffffffff;
+	color_offset.lock = -1;
 	
 	return err;
 

@@ -7,36 +7,90 @@
  
 #include <litmus/page_dev.h>
 
-#define NR_PARTITIONS		9
+// This Address Decoding is used in imx6-sabredsd platform
+#define NUM_BANKS	8
+#define BANK_MASK	0x38000000     
+#define BANK_SHIFT  27
+
+#define NUM_COLORS	16
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+
+#define NR_LLC_PARTITIONS		9
+#define NR_DRAM_PARTITIONS		5
 
 struct mutex dev_mutex;
 
 /* Initial partitions for LLC and DRAM bank */
 /* 4 color for each core, all colors for Level C */
-unsigned int llc_partition[NR_PARTITIONS] = {
-	0x00000003,  /* Core 0, and Level A*/
-	0x00000003,  /* Core 0, and Level B*/
-	0x0000000C,  /* Core 1, and Level A*/
-	0x0000000C,  /* Core 1, and Level B*/
-	0x00000030,  /* Core 2, and Level A*/
-	0x00000030,  /* Core 2, and Level B*/
-	0x000000C0,  /* Core 3, and Level A*/
-	0x000000C0,  /* Core 3, and Level B*/
+unsigned int llc_partition[NR_LLC_PARTITIONS] = {
+	0x0000000f,  /* Core 0, and Level A*/
+	0x0000000f,  /* Core 0, and Level B*/
+	0x000000f0,  /* Core 1, and Level A*/
+	0x000000f0,  /* Core 1, and Level B*/
+	0x00000f00,  /* Core 2, and Level A*/
+	0x00000f00,  /* Core 2, and Level B*/
+	0x0000f000,  /* Core 3, and Level A*/
+	0x0000f000,  /* Core 3, and Level B*/
 	0x0000ffff,  /* Level C */
 };
 
 /* 1 bank for each core, 2 banks for Level C */
-unsigned int dram_partition[NR_PARTITIONS] = {
-	0x00000010,  /* Core 0, and Level A*/
-	0x00000010,  /* Core 0, and Level B*/
-	0x00000020,  /* Core 1, and Level A*/
-	0x00000020,  /* Core 1, and Level B*/
-	0x00000040,  /* Core 2, and Level A*/
-	0x00000040,  /* Core 2, and Level B*/
-	0x00000080,  /* Core 3, and Level A*/
-	0x00000080,  /* Core 3, and Level B*/
-	0x0000000c,  /* Level C */
+unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
+	0x00000010,
+	0x00000020,
+	0x00000040,
+	0x00000080,
+	0x0000000f,
 };
+/*
+unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
+	0x00000001,
+	0x00000002,
+	0x00000004,
+	0x00000008,
+	0x000000f0,
+};
+*/
+
+/* Decoding page color, 0~15 */ 
+static inline unsigned int page_color(struct page *page)
+{
+	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
+}
+
+/* Decoding page bank number, 0~7 */ 
+static inline unsigned int page_bank(struct page *page)
+{
+	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
+}
+
+int bank_to_partition(unsigned int bank)
+{
+	int i;
+	unsigned int bank_bit = 0x1<<bank;
+	
+	for (i = 0; i<NR_DRAM_PARTITIONS; i++) {
+		if (dram_partition[i] & bank_bit)
+			return i;
+	}
+	
+	return -EINVAL;
+}
+
+int is_in_llc_partition(struct page* page, int cpu)
+{
+	int color;
+	unsigned int page_color_bit;
+	
+	color = page_color(page);
+	page_color_bit = 1 << color;
+	
+	if (cpu == NR_CPUS)
+		return (page_color_bit&llc_partition[cpu*2]);
+	else
+		return (page_color_bit & (llc_partition[cpu*2] | llc_partition[cpu*2+1]));
+}
 
 /* Bounds for values */ 
 unsigned int llc_partition_max = 0x0000ffff;
@@ -129,7 +183,7 @@ static struct ctl_table partition_table[] =
 		.extra2		= &llc_partition_max,
 	},	
 	{
-		.procname	= "C0_LA_dram",
+		.procname	= "C0_dram",
 		.mode		= 0666,
 		.proc_handler	= dram_partition_handler,
 		.data		= &dram_partition[0],
@@ -138,74 +192,38 @@ static struct ctl_table partition_table[] =
 		.extra2		= &dram_partition_max,
 	},
 	{
-		.procname	= "C0_LB_dram",
+		.procname	= "C1_dram",
 		.mode		= 0666,
 		.proc_handler	= dram_partition_handler,
 		.data		= &dram_partition[1],
 		.maxlen		= sizeof(llc_partition[1]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},		
+	},
 	{
-		.procname	= "C1_LA_dram",
+		.procname	= "C2_dram",
 		.mode		= 0666,
 		.proc_handler	= dram_partition_handler,
 		.data		= &dram_partition[2],
 		.maxlen		= sizeof(llc_partition[2]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},
+	},	
 	{
-		.procname	= "C1_LB_dram",
+		.procname	= "C3_dram",
 		.mode		= 0666,
 		.proc_handler	= dram_partition_handler,
 		.data		= &dram_partition[3],
 		.maxlen		= sizeof(llc_partition[3]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},
+	},	
 	{
-		.procname	= "C2_LA_dram",
+		.procname	= "CS_dram",
 		.mode		= 0666,
 		.proc_handler	= dram_partition_handler,
 		.data		= &dram_partition[4],
 		.maxlen		= sizeof(llc_partition[4]),
-		.extra1		= &dram_partition_min,
-		.extra2		= &dram_partition_max,
-	},	
-	{
-		.procname	= "C2_LB_dram",
-		.mode		= 0666,
-		.proc_handler	= dram_partition_handler,
-		.data		= &dram_partition[5],
-		.maxlen		= sizeof(llc_partition[5]),
-		.extra1		= &dram_partition_min,
-		.extra2		= &dram_partition_max,
-	},		
-	{
-		.procname	= "C3_LA_dram",
-		.mode		= 0666,
-		.proc_handler	= dram_partition_handler,
-		.data		= &dram_partition[6],
-		.maxlen		= sizeof(llc_partition[6]),
-		.extra1		= &dram_partition_min,
-		.extra2		= &dram_partition_max,
-	},	
-	{
-		.procname	= "C3_LB_dram",
-		.mode		= 0666,
-		.proc_handler	= dram_partition_handler,
-		.data		= &dram_partition[7],
-		.maxlen		= sizeof(llc_partition[7]),
-		.extra1		= &dram_partition_min,
-		.extra2		= &dram_partition_max,
-	},	
-	{
-		.procname	= "Call_LC_dram",
-		.mode		= 0666,
-		.proc_handler	= dram_partition_handler,
-		.data		= &dram_partition[8],
-		.maxlen		= sizeof(llc_partition[8]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
 	},	
@@ -232,8 +250,8 @@ int llc_partition_handler(struct ctl_table *table, int write, void __user *buffe
 		goto out;
 	if (write) {
 		printk("New LLC Partition : \n");
-	    for(i = 0; i < NR_PARTITIONS; i++) {
-			printk("llc_partition[%d] = %x\n", i, llc_partition[i]);
+	    for(i = 0; i < NR_LLC_PARTITIONS; i++) {
+			printk("llc_partition[%d] = 0x%04x\n", i, llc_partition[i]);
 		}
 	}
 out:
@@ -249,8 +267,8 @@ int dram_partition_handler(struct ctl_table *table, int write, void __user *buff
 	if (ret)
 		goto out;
 	if (write) {
-		for(i = 0; i < NR_PARTITIONS; i++) {
-			printk("dram_partition[%d] = %x\n", i, dram_partition[i]);
+		for(i = 0; i < NR_DRAM_PARTITIONS; i++) {
+			printk("dram_partition[%d] = 0x%04x\n", i, dram_partition[i]);
 		}
 	}
 out:

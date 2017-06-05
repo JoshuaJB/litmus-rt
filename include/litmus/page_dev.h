@@ -26,5 +26,7 @@
 
 int llc_partition_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos);
 int dram_partition_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos);
+int bank_to_partition(unsigned int bank);
+int is_in_llc_partition(struct page* page, int cpu);
 
 #endif /* _LITMUS_PAGE_DEV_H */
