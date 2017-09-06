@@ -2770,7 +2770,8 @@ EXPORT_SYMBOL(kmem_cache_free);
  * take the list_lock.
  */
 static int slub_min_order;
-static int slub_max_order = PAGE_ALLOC_COSTLY_ORDER;
+//static int slub_max_order = PAGE_ALLOC_COSTLY_ORDER;
+static int slub_max_order = 2;
 static int slub_min_objects;
 
 /*
@@ -5139,6 +5140,10 @@ static char *create_unique_id(struct kmem_cache *s)
 	 * are matched during merging to guarantee that the id is
 	 * unique.
 	 */
+	if (s->flags & SLAB_NO_MERGE) {
+		*p++ = 'n';
+		p += sprintf(p, "%01d", s->cpu_id);
+	}
 	if (s->flags & SLAB_CACHE_DMA)
 		*p++ = 'd';
 	if (s->flags & SLAB_RECLAIM_ACCOUNT)

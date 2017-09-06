@@ -58,12 +58,13 @@ out:
 	if (!ret) {
 		unsigned long nr_pages;
 		int migratetype = get_pageblock_migratetype(page);
+		int partno = bank_to_partition(page_bank(page));
 
 		set_pageblock_migratetype(page, MIGRATE_ISOLATE);
 		zone->nr_isolate_pageblock++;
 		nr_pages = move_freepages_block(zone, page, MIGRATE_ISOLATE);
 
-		__mod_zone_freepage_state(zone, -nr_pages, migratetype);
+		__mod_zone_freepage_state(zone, -nr_pages, migratetype, partno);
 	}
 
 	spin_unlock_irqrestore(&zone->lock, flags);
@@ -117,8 +118,9 @@ void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	 * pageblock scanning for freepage moving.
 	 */
 	if (!isolated_page) {
+		int partno = bank_to_partition(page_bank(page));
 		nr_pages = move_freepages_block(zone, page, migratetype);
-		__mod_zone_freepage_state(zone, nr_pages, migratetype);
+		__mod_zone_freepage_state(zone, nr_pages, migratetype, partno);
 	}
 	set_pageblock_migratetype(page, migratetype);
 	zone->nr_isolate_pageblock--;

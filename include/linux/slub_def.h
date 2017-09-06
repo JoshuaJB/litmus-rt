@@ -98,6 +98,8 @@ struct kmem_cache {
 	 */
 	int remote_node_defrag_ratio;
 #endif
+	/* cpu id for higher-criticality slabs */
+	int cpu_id;
 	struct kmem_cache_node *node[MAX_NUMNODES];
 };
 

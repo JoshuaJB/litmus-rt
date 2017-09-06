@@ -226,7 +226,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[4]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},	
+	},
 	{ }
 };
 

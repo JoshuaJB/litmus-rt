@@ -278,9 +278,12 @@ static inline void drain_zonestat(struct zone *zone,
 #endif		/* CONFIG_SMP */
 
 static inline void __mod_zone_freepage_state(struct zone *zone, int nr_pages,
-					     int migratetype)
+					     int migratetype, int part_no)
 {
-	__mod_zone_page_state(zone, NR_FREE_PAGES, nr_pages);
+	if (part_no == NR_CPUS)
+		__mod_zone_page_state(zone, NR_FREE_PAGES, nr_pages);
+	else
+		__mod_zone_page_state(zone, NR_FREE_HC_PAGES, nr_pages);
 	if (is_migrate_cma(migratetype))
 		__mod_zone_page_state(zone, NR_FREE_CMA_PAGES, nr_pages);
 }

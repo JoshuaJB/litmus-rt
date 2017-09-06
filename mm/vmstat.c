@@ -739,6 +739,7 @@ const char * const vmstat_text[] = {
 	"workingset_nodereclaim",
 	"nr_anon_transparent_hugepages",
 	"nr_free_cma",
+	"nr_free_hc_pages",
 
 	/* enum writeback_stat_item counters */
 	"nr_dirty_threshold",
@@ -754,6 +755,7 @@ const char * const vmstat_text[] = {
 	TEXTS_FOR_ZONES("pgalloc")
 
 	"pgfree",
+	"pgfree_hc",
 	"pgactivate",
 	"pgdeactivate",
 
