@@ -1320,8 +1320,11 @@ static inline struct page *alloc_slab_page(struct kmem_cache *s,
 	if (memcg_charge_slab(s, flags, order))
 		return NULL;
 
-	if (node == NUMA_NO_NODE)
+	if (node == NUMA_NO_NODE) {
+		if (flags&GFP_COLOR)
+			printk(KERN_INFO "alloc_pages calls with GFP_COLOR order = %d\n", order);
 		page = alloc_pages(flags, order);
+	}
 	else
 		page = alloc_pages_exact_node(node, flags, order);
 
@@ -1337,6 +1340,9 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	struct kmem_cache_order_objects oo = s->oo;
 	gfp_t alloc_gfp;
 
+if (flags&GFP_COLOR)
+	printk(KERN_INFO "gfp_allowed_mask = %08x\n", gfp_allowed_mask);
+	
 	flags &= gfp_allowed_mask;
 
 	if (flags & __GFP_WAIT)
@@ -1349,7 +1355,9 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	 * so we fall-back to the minimum order allocation.
 	 */
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
-
+if (flags&__GFP_COLOR) {
+	printk(KERN_INFO "allocate_slab with GFP_COLOR alloc_gfp = %08x\n", alloc_gfp);
+}
 	page = alloc_slab_page(s, alloc_gfp, node, oo);
 	if (unlikely(!page)) {
 		oo = s->min;
@@ -1419,7 +1427,7 @@ static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
 	}
 
 	page = allocate_slab(s,
-		flags & (GFP_RECLAIM_MASK | GFP_CONSTRAINT_MASK), node);
+		flags & (GFP_RECLAIM_MASK | GFP_CONSTRAINT_MASK | GFP_COLOR), node);
 	if (!page)
 		goto out;
 
@@ -2223,6 +2231,11 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 		return freelist;
 
 	page = new_slab(s, flags, node);
+
+if (flags&GFP_COLOR) {
+	printk(KERN_INFO "new_slab_objects(): gets page %p\n", page);
+}
+
 	if (page) {
 		c = raw_cpu_ptr(s->cpu_slab);
 		if (c->page)
@@ -2308,6 +2321,8 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	void *freelist;
 	struct page *page;
 	unsigned long flags;
+if (gfpflags&GFP_COLOR)
+	printk(KERN_INFO "__slab_alloc slow_path\n");
 
 	local_irq_save(flags);
 #ifdef CONFIG_PREEMPT
@@ -2318,6 +2333,11 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	 */
 	c = this_cpu_ptr(s->cpu_slab);
 #endif
+
+
+if (gfpflags&GFP_COLOR) {
+	printk(KERN_INFO "__slab_alloc : page %p, partial %p\n", c->page, c->partial);
+}
 
 	page = c->page;
 	if (!page)
@@ -3308,14 +3328,22 @@ void *__kmalloc(size_t size, gfp_t flags)
 	struct kmem_cache *s;
 	void *ret;
 
+if (flags & GFP_COLOR) {
+	printk(KERN_INFO "kmalloc size %d\n", size);
+}
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE))
 		return kmalloc_large(size, flags);
 
 	s = kmalloc_slab(size, flags);
-
+if (flags & GFP_COLOR) {
+	printk(KERN_INFO "kmalloc_slab %p\n", s);
+}
 	if (unlikely(ZERO_OR_NULL_PTR(s)))
 		return s;
 
+if (flags & GFP_COLOR) {
+	printk(KERN_INFO "slab_alloc calls!!\n");
+}
 	ret = slab_alloc(s, flags, _RET_IP_);
 
 	trace_kmalloc(_RET_IP_, ret, size, s->size, flags);

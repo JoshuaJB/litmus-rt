@@ -1312,8 +1312,8 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 		seq_printf(m, "\n  vm stats threshold: %d",
 				pageset->stat_threshold);
 #endif
-		/* test */
-		seq_printf(m, "\n");
+		/* pcp test */
+/*		seq_printf(m, "\n");
 		for (mtype = 0; mtype < MIGRATE_PCPTYPES; mtype++) {
 			struct page *p;
 			list_for_each_entry(p, &pageset->pcp.lists[mtype], lru) {
@@ -1321,6 +1321,7 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 					seq_printf(m, "page bank = %d color = %d\n", page_bank(p), page_color(p));
 			}
 		}
+*/		
 	}
 	seq_printf(m,
 		   "\n  all_unreclaimable: %u"

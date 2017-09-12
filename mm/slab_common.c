@@ -787,7 +787,14 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 		return kmalloc_dma_caches[index];
 
 #endif
-	return kmalloc_caches[index];
+
+	if (flags & GFP_COLOR) {
+		int cpu = raw_smp_processor_id();
+		printk(KERN_INFO "in kmalloc_slab index %d\n", index);
+		return hc_kmalloc_caches[cpu][index];
+	}
+	else
+		return kmalloc_caches[index];
 }
 
 /*
@@ -841,6 +848,7 @@ void __init create_kmalloc_caches(unsigned long flags)
 			size_index[size_index_elem(i)] = 8;
 	}
 	for (i = KMALLOC_SHIFT_LOW; i <= KMALLOC_SHIFT_HIGH; i++) {
+		printk(KERN_INFO "KMALLOC i = %d\n", i);
 		if (!kmalloc_caches[i]) {
 			kmalloc_caches[i] = create_kmalloc_cache(NULL,
 							1 << i, flags);
@@ -866,28 +874,29 @@ printk(KERN_INFO "KMALLOC-192 CACHE CREATED\n");
 /* per-cpu kmalloc caches */
 	printk(KERN_INFO "SLAB_STATE = %d\n", slab_state);
 	for (cpu = 0; cpu < NR_CPUS; cpu++) {
-	//cpu = 0;
 		for (i = KMALLOC_SHIFT_LOW; i <= KMALLOC_SHIFT_HIGH; i++) {
 			char *n;
-			n = kasprintf(GFP_NOWAIT, "hc%01d-kmalloc-%d", cpu, kmalloc_size(i));
+			n = kasprintf(GFP_NOWAIT, "cpu%01d-kmalloc-%d", cpu, kmalloc_size(i));
+			
+			printk(KERN_INFO "HC-KMALLOC i = %d\n", i);
 			hc_kmalloc_caches[cpu][i] = create_kmalloc_cache(n, 1 << i, SLAB_NO_MERGE|flags);
 			hc_kmalloc_caches[cpu][i]->cpu_id = cpu;
 			printk(KERN_INFO "CPU%d HC-KMALLOC-%d CACHE CREATED\n", cpu, 1<<i);
-			printk(KERN_INFO "HC-KMALLOC-%d slabs freelist=%p, pages=%p, partial=%p\n", 1<<i, hc_kmalloc_caches[cpu][i]->cpu_slab->freelist, hc_kmalloc_caches[cpu][i]->cpu_slab->page,hc_kmalloc_caches[cpu][i]->cpu_slab->partial);
-			
+			printk(KERN_INFO "HC-KMALLOC-%d slabs freelist=%p, pages=%p, partial=%p\n", 1<<i, hc_kmalloc_caches[cpu][i]->cpu_slab->freelist, hc_kmalloc_caches[cpu][i]->cpu_slab->page,hc_kmalloc_caches[cpu][i]->cpu_slab->partial);		
 
-			/*
-
-			if (KMALLOC_MIN_SIZE <= 32 && !pc_kmalloc_caches[cpu][1] && i == 6) {
-				pc_kmalloc_caches[cpu][1] = create_kmalloc_cache(NULL, 96, flags);
-	printk(KERN_INFO "PC-KMALLOC-96 CACHE CREATED\n");
+			if (KMALLOC_MIN_SIZE <= 32 && !hc_kmalloc_caches[cpu][1] && i == 6) {
+				char *nm;
+				nm = kasprintf(GFP_NOWAIT, "cpu%01d-kmalloc-%d", cpu, kmalloc_size(1));
+				hc_kmalloc_caches[cpu][1] = create_kmalloc_cache(nm, 96, SLAB_NO_MERGE|flags);
+				printk(KERN_INFO "CPU%d HC-KMALLOC-96 CACHE CREATED\n", cpu);
 			}
 
-			if (KMALLOC_MIN_SIZE <= 64 && !pc_kmalloc_caches[cpu][2] && i == 7) {
-				pc_kmalloc_caches[cpu][2] = create_kmalloc_cache(NULL, 192, flags);
-	printk(KERN_INFO "PC-KMALLOC-192 CACHE CREATED\n");
+			if (KMALLOC_MIN_SIZE <= 64 && !hc_kmalloc_caches[cpu][2] && i == 7) {
+				char *nm;
+				nm = kasprintf(GFP_NOWAIT, "cpu%01d-kmalloc-%d", cpu, kmalloc_size(2));
+				hc_kmalloc_caches[cpu][2] = create_kmalloc_cache(nm, 192, SLAB_NO_MERGE|flags);
+				printk(KERN_INFO "CPU%d HC-KMALLOC-192 CACHE CREATED\n", cpu);
 			}
-			*/
 		}
 	}
 

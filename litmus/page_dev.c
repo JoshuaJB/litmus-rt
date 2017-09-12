@@ -98,6 +98,81 @@ unsigned int llc_partition_min = 0;
 unsigned int dram_partition_max = 0x000000ff;
 unsigned int dram_partition_min = 0;
 
+/* slabtest module */
+int buf_size = 0;
+int buf_num = 1;
+
+int slabtest_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0, i;
+	int** testbuffer;
+	mutex_lock(&dev_mutex);
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	
+	if (ret)
+		goto out;
+	
+	if (write) {
+		int idx;
+		int n_data = buf_size/sizeof(int);
+		
+		testbuffer = kmalloc(sizeof(int*)*buf_num, GFP_KERNEL|GFP_COLOR);
+		
+		for (idx=0; idx<buf_num; idx++)
+		{
+			printk(KERN_INFO "kmalloc size %d, n_data %d\n", buf_size, n_data);
+			testbuffer[idx] = kmalloc(buf_size, GFP_KERNEL|GFP_COLOR);
+			
+			if (!testbuffer[idx]) {
+				printk(KERN_ERR "kmalloc failed size = %d\n", buf_size);
+				goto out;
+			}
+		}
+		
+		
+		/* do test */
+		for (idx=0; idx<buf_num; idx++)
+		{
+			int t = 0;
+			printk(KERN_INFO "kmalloc size = %d n_data = %d\n", buf_size, n_data);
+			printk(KERN_INFO "write data to buffer\n");
+			for (i = 0; i < n_data; i++) {
+				testbuffer[idx][i] = i%27;
+			}
+			printk(KERN_INFO "read data from buffer\n");
+			for (i = 0; i < n_data; i++) {
+				t += testbuffer[idx][i];
+				//printk(KERN_INFO "[%d] = %d\n", i, testbuffer[idx][i]);
+			}
+		}
+
+		for (idx=0; idx<buf_num; idx++)
+			kfree(testbuffer[idx]);
+		
+		kfree(testbuffer);
+	}
+out:
+	mutex_unlock(&dev_mutex);
+	return ret;
+}
+
+int num_buffer_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+	mutex_lock(&dev_mutex);
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	
+	if (ret)
+		goto out;
+	
+	if (write) {
+		printk(KERN_INFO "buf_num = %d\n", buf_num);
+	}
+out:
+	mutex_unlock(&dev_mutex);
+	return ret;
+}
+
 static struct ctl_table partition_table[] =
 {
         
@@ -226,6 +301,20 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[4]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
+	},
+	{
+		.procname	= "slabtest",
+		.mode		= 0666,
+		.proc_handler	= slabtest_handler,
+		.data		= &buf_size,
+		.maxlen		= sizeof(buf_size),
+	},
+	{
+		.procname	= "num_buffer",
+		.mode		= 0666,
+		.proc_handler	= num_buffer_handler,
+		.data		= &buf_num,
+		.maxlen		= sizeof(buf_num),
 	},
 	{ }
 };
