@@ -1202,25 +1202,17 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 				continue;
 			}
 
-			
-			{
-				list_for_each_entry(page, &area->free_list[migratetype], lru) {
-					printk(KERN_INFO "__rmqueue_smallest list entry %p color %d\n", page, page_color(page));
+			list_for_each_entry(page, &area->free_list[migratetype], lru) {
+				printk(KERN_INFO "__rmqueue_smallest list entry %p color %d\n", page, page_color(page));
+				if (is_in_llc_partition(page, cpu) && (page_to_pfn(page) >= s_pfn && page_to_pfn(page) < e_pfn)) {
+					found = 1;
+					break;
 				}
 			}
 			printk(KERN_INFO "__rmqueue_smallest LAST list entry %p\n", page);
-			
-			page = list_entry(area->free_list[migratetype].next,
-								struct page, lru);
-			if (is_in_llc_partition(page, cpu))
-				found = 1;
-			
-			while(!found) {
-				page = list_next_entry(page, lru);
-				if (is_in_llc_partition(page, cpu) && (page_to_pfn(page) >= s_pfn && page_to_pfn(page) < e_pfn))
-					found = 1;
-			}
-			BUG_ON(found == 0);
+
+			if (!found)
+				return NULL;
 			
 			list_del(&page->lru);
 			rmv_page_order(page);
@@ -1472,6 +1464,9 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 	if (color_req == 1) {
 		int cpu = raw_smp_processor_id();
 		int found = 0;
+		unsigned long s_pfn = zone->zone_start_pfn;
+		unsigned long e_pfn = zone_end_pfn(zone);
+		
 		/* Find the largest possible block of pages in the other list */
 		for (current_order = MAX_PARTITIONED_ORDER-1;
 					current_order >= order && current_order <= MAX_PARTITIONED_ORDER-1;
@@ -1481,25 +1476,18 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 					start_migratetype, false, &can_steal);
 			if (fallback_mt == -1)
 				continue;
-
-/*						
-			{
-				list_for_each_entry(page, &area->free_list[fallback_mt], lru) {
-					printk(KERN_INFO "__rmqueue_fallback list entry %p color %d\n", page, page_color(page));
+	
+			list_for_each_entry(page, &area->free_list[fallback_mt], lru) {
+				printk(KERN_INFO "__rmqueue_falback list entry %p color %d\n", page, page_color(page));
+				if (is_in_llc_partition(page, cpu) && (page_to_pfn(page) >= s_pfn && page_to_pfn(page) < e_pfn)) {
+					found = 1;
+					break;
 				}
 			}
-*/			
-			
-			page = list_entry(area->free_list[fallback_mt].next,
-							struct page, lru);
-			if (is_in_llc_partition(page, cpu))
-				found = 1;
-			
-			while(!found) {
-				page = list_next_entry(page, lru);
-				if (is_in_llc_partition(page, cpu))
-					found = 1;
-			}			
+			printk(KERN_INFO "__rmqueue_falback LAST list entry %p\n", page);
+
+			if (!found)
+				return NULL;
 			
 			if (can_steal)
 				steal_suitable_fallback(zone, page, start_migratetype);
