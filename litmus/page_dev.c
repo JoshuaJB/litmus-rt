@@ -6,6 +6,7 @@
  */
  
 #include <litmus/page_dev.h>
+#include <litmus/debug_trace.h>
 
 // This Address Decoding is used in imx6-sabredsd platform
 #define NUM_BANKS	8

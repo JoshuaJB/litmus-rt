@@ -1321,8 +1321,10 @@ static inline struct page *alloc_slab_page(struct kmem_cache *s,
 		return NULL;
 
 	if (node == NUMA_NO_NODE) {
+#ifdef CONFIG_SCHED_DEBUG_TRACE		
 		if (flags&GFP_COLOR)
 			printk(KERN_INFO "alloc_pages calls with GFP_COLOR order = %d\n", order);
+#endif		
 		page = alloc_pages(flags, order);
 	}
 	else
@@ -1340,8 +1342,10 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	struct kmem_cache_order_objects oo = s->oo;
 	gfp_t alloc_gfp;
 
-if (flags&GFP_COLOR)
-	printk(KERN_INFO "gfp_allowed_mask = %08x\n", gfp_allowed_mask);
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags&GFP_COLOR)
+		printk(KERN_INFO "gfp_allowed_mask = %08x\n", gfp_allowed_mask);
+#endif
 	
 	flags &= gfp_allowed_mask;
 
@@ -1355,9 +1359,12 @@ if (flags&GFP_COLOR)
 	 * so we fall-back to the minimum order allocation.
 	 */
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
-if (flags&__GFP_COLOR) {
-	printk(KERN_INFO "allocate_slab with GFP_COLOR alloc_gfp = %08x\n", alloc_gfp);
-}
+
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags&__GFP_COLOR)
+		printk(KERN_INFO "allocate_slab with GFP_COLOR alloc_gfp = %08x\n", alloc_gfp);
+#endif
+
 	page = alloc_slab_page(s, alloc_gfp, node, oo);
 	if (unlikely(!page)) {
 		oo = s->min;
@@ -2232,9 +2239,10 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 
 	page = new_slab(s, flags, node);
 
-if (flags&GFP_COLOR) {
-	printk(KERN_INFO "new_slab_objects(): gets page %p\n", page);
-}
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags&GFP_COLOR)
+		printk(KERN_INFO "new_slab_objects(): gets page %p\n", page);
+#endif
 
 	if (page) {
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2321,8 +2329,11 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	void *freelist;
 	struct page *page;
 	unsigned long flags;
-if (gfpflags&GFP_COLOR)
-	printk(KERN_INFO "__slab_alloc slow_path\n");
+
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (gfpflags&GFP_COLOR)
+		printk(KERN_INFO "__slab_alloc slow_path\n");
+#endif
 
 	local_irq_save(flags);
 #ifdef CONFIG_PREEMPT
@@ -2334,10 +2345,10 @@ if (gfpflags&GFP_COLOR)
 	c = this_cpu_ptr(s->cpu_slab);
 #endif
 
-
-if (gfpflags&GFP_COLOR) {
-	printk(KERN_INFO "__slab_alloc : page %p, partial %p\n", c->page, c->partial);
-}
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (gfpflags&GFP_COLOR)
+		printk(KERN_INFO "__slab_alloc : page %p, partial %p\n", c->page, c->partial);
+#endif
 
 	page = c->page;
 	if (!page)
@@ -3328,22 +3339,29 @@ void *__kmalloc(size_t size, gfp_t flags)
 	struct kmem_cache *s;
 	void *ret;
 
-if (flags & GFP_COLOR) {
-	printk(KERN_INFO "kmalloc size %d\n", size);
-}
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags & GFP_COLOR)
+		printk(KERN_INFO "kmalloc size %d\n", size);
+#endif
+
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE))
 		return kmalloc_large(size, flags);
 
 	s = kmalloc_slab(size, flags);
-if (flags & GFP_COLOR) {
-	printk(KERN_INFO "kmalloc_slab %p\n", s);
-}
+	
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags & GFP_COLOR)
+		printk(KERN_INFO "kmalloc_slab %p\n", s);
+#endif
+
 	if (unlikely(ZERO_OR_NULL_PTR(s)))
 		return s;
 
-if (flags & GFP_COLOR) {
-	printk(KERN_INFO "slab_alloc calls!!\n");
-}
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (flags & GFP_COLOR)
+		printk(KERN_INFO "slab_alloc calls!!\n");
+#endif
+
 	ret = slab_alloc(s, flags, _RET_IP_);
 
 	trace_kmalloc(_RET_IP_, ret, size, s->size, flags);

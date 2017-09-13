@@ -790,7 +790,7 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 
 	if (flags & GFP_COLOR) {
 		int cpu = raw_smp_processor_id();
-		printk(KERN_INFO "in kmalloc_slab index %d\n", index);
+		TRACE("in kmalloc_slab index %d\n", index);
 		return hc_kmalloc_caches[cpu][index];
 	}
 	else
@@ -848,11 +848,9 @@ void __init create_kmalloc_caches(unsigned long flags)
 			size_index[size_index_elem(i)] = 8;
 	}
 	for (i = KMALLOC_SHIFT_LOW; i <= KMALLOC_SHIFT_HIGH; i++) {
-		printk(KERN_INFO "KMALLOC i = %d\n", i);
 		if (!kmalloc_caches[i]) {
 			kmalloc_caches[i] = create_kmalloc_cache(NULL,
 							1 << i, flags);
-printk(KERN_INFO "KMALLOC-%d CACHE CREATED\n", 1<<i);
 		}
 
 		/*
@@ -862,12 +860,10 @@ printk(KERN_INFO "KMALLOC-%d CACHE CREATED\n", 1<<i);
 		 */
 		if (KMALLOC_MIN_SIZE <= 32 && !kmalloc_caches[1] && i == 6) {
 			kmalloc_caches[1] = create_kmalloc_cache(NULL, 96, flags);
-printk(KERN_INFO "KMALLOC-96 CACHE CREATED\n");
 		}
 
 		if (KMALLOC_MIN_SIZE <= 64 && !kmalloc_caches[2] && i == 7) {
 			kmalloc_caches[2] = create_kmalloc_cache(NULL, 192, flags);
-printk(KERN_INFO "KMALLOC-192 CACHE CREATED\n");
 		}
 	}
 

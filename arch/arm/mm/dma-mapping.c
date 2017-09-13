@@ -664,6 +664,11 @@ static void *__dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 	size = PAGE_ALIGN(size);
 	want_vaddr = !dma_get_attr(DMA_ATTR_NO_KERNEL_MAPPING, attrs);
 
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+	if (gfp&GFP_COLOR)
+		printk(KERN_INFO "__dma_alloc() for usb buffer\n");
+#endif
+	
 	if (is_coherent || nommu())
 		addr = __alloc_simple_buffer(dev, size, gfp, &page);
 	else if (!(gfp & __GFP_WAIT))
@@ -689,6 +694,16 @@ void *arm_dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	void *memory;
 
+	if ((gfp&GFP_COLOR) && (size > PAGE_SIZE*4)) {
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+		printk(KERN_INFO "arm_dma_alloc(): original prot %08x\n", prot);
+#endif
+		prot = pgprot_noncached(prot);
+#ifdef CONFIG_SCHED_DEBUG_TRACE
+		printk(KERN_INFO "arm_dma_alloc(): set as uncacheable prot %08x\n", prot);
+#endif
+	}
+	
 	if (dma_alloc_from_coherent(dev, size, handle, &memory))
 		return memory;
 

@@ -1406,10 +1406,10 @@ static int uvc_alloc_urb_buffers(struct uvc_streaming *stream,
 #ifndef CONFIG_DMA_NONCOHERENT
 			stream->urb_buffer[i] = usb_alloc_coherent(
 				stream->dev->udev, stream->urb_size,
-				gfp_flags | __GFP_NOWARN, &stream->urb_dma[i]);
+				gfp_flags | __GFP_NOWARN | GFP_COLOR, &stream->urb_dma[i]);
 #else
 			stream->urb_buffer[i] =
-			    kmalloc(stream->urb_size, gfp_flags | __GFP_NOWARN);
+			    kmalloc(stream->urb_size, gfp_flags | __GFP_NOWARN | GFP_COLOR);
 #endif
 			if (!stream->urb_buffer[i]) {
 				uvc_free_urb_buffers(stream);
