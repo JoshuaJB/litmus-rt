@@ -44,15 +44,6 @@ unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
 	0x00000080,
 	0x0000000f,
 };
-/*
-unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
-	0x00000001,
-	0x00000002,
-	0x00000004,
-	0x00000008,
-	0x000000f0,
-};
-*/
 
 /* Decoding page color, 0~15 */ 
 static inline unsigned int page_color(struct page *page)
@@ -79,6 +70,35 @@ int bank_to_partition(unsigned int bank)
 	return -EINVAL;
 }
 
+int get_area_index(int cpu)
+{
+	int index = 0x10, area_index = 0;
+	
+	while (index < 0x100) {
+		if (dram_partition[cpu]&index)
+			break;
+		index = index << 1;
+		area_index++;
+	}
+	
+	return area_index;
+}
+
+/* use this function ONLY for Lv.A/B pages */
+int is_in_correct_bank(struct page* page, int cpu)
+{
+	int bank;
+	unsigned int page_bank_bit;
+	
+	bank = page_bank(page);
+	page_bank_bit = 1 << bank;
+	
+	if (cpu == -1 || cpu == NR_CPUS)
+		return (page_bank_bit & dram_partition[NR_CPUS]);
+	else
+		return (page_bank_bit & dram_partition[cpu]);
+}
+
 int is_in_llc_partition(struct page* page, int cpu)
 {
 	int color;
@@ -87,8 +107,8 @@ int is_in_llc_partition(struct page* page, int cpu)
 	color = page_color(page);
 	page_color_bit = 1 << color;
 	
-	if (cpu == NR_CPUS)
-		return (page_color_bit&llc_partition[cpu*2]);
+	if (cpu == -1 || cpu == NR_CPUS)
+		return (page_color_bit & llc_partition[8]);
 	else
 		return (page_color_bit & (llc_partition[cpu*2] | llc_partition[cpu*2+1]));
 }
@@ -117,12 +137,14 @@ int slabtest_handler(struct ctl_table *table, int write, void __user *buffer, si
 		int idx;
 		int n_data = buf_size/sizeof(int);
 		
-		testbuffer = kmalloc(sizeof(int*)*buf_num, GFP_KERNEL|GFP_COLOR);
+		printk(KERN_INFO "-------SLABTEST on CPU%d with %d buffer size\n", raw_smp_processor_id(), buf_size);
+		
+		testbuffer = kmalloc(sizeof(int*)*buf_num, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
 		
 		for (idx=0; idx<buf_num; idx++)
 		{
 			printk(KERN_INFO "kmalloc size %d, n_data %d\n", buf_size, n_data);
-			testbuffer[idx] = kmalloc(buf_size, GFP_KERNEL|GFP_COLOR);
+			testbuffer[idx] = kmalloc(buf_size, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
 			
 			if (!testbuffer[idx]) {
 				printk(KERN_ERR "kmalloc failed size = %d\n", buf_size);
@@ -151,6 +173,7 @@ int slabtest_handler(struct ctl_table *table, int write, void __user *buffer, si
 			kfree(testbuffer[idx]);
 		
 		kfree(testbuffer);
+		printk(KERN_INFO "-------SLABTEST FINISHED on CPU%d\n", raw_smp_processor_id());
 	}
 out:
 	mutex_unlock(&dev_mutex);

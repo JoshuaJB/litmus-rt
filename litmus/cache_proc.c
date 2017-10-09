@@ -10,7 +10,10 @@
 #include <linux/mutex.h>
 #include <linux/time.h>
 #include <linux/random.h>
+#include <linux/sched.h>
 
+#include <litmus/rt_param.h>
+#include <litmus/litmus.h>
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
 #include <litmus/cache_proc.h>
@@ -18,7 +21,6 @@
 
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/cacheflush.h>
-
 
 #define UNLOCK_ALL	0x00000000 /* allocation in any way */
 #define LOCK_ALL        (~UNLOCK_ALL)

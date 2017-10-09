@@ -30,6 +30,13 @@
 #include <media/v4l2-common.h>
 #include <media/videobuf2-core.h>
 
+#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define VB2_CORE_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define VB2_CORE_FLAG	(GFP_COLOR)
+#endif
+
 static int debug;
 module_param(debug, int, 0644);
 
@@ -200,7 +207,7 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 	 */
 	for (plane = 0; plane < vb->num_planes; ++plane) {
 		unsigned long size = PAGE_ALIGN(q->plane_sizes[plane]);
-
+		printk(KERN_INFO "__vb2_buf_mem_alloc(): size %ld, func %pF GFP_COLOR? %d\n", size, vb->vb2_queue->mem_ops->alloc, q->gfp_flags&GFP_COLOR);
 		mem_priv = call_ptr_memop(vb, alloc, q->alloc_ctx[plane],
 				      size, dma_dir, q->gfp_flags);
 		if (IS_ERR_OR_NULL(mem_priv))
@@ -352,7 +359,7 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum v4l2_memory memory,
 
 	for (buffer = 0; buffer < num_buffers; ++buffer) {
 		/* Allocate videobuf buffer structures */
-		vb = kzalloc(q->buf_struct_size, GFP_KERNEL);
+		vb = kzalloc(q->buf_struct_size, GFP_KERNEL|VB2_CORE_FLAG);
 		if (!vb) {
 			dprintk(1, "memory alloc for buffer struct failed\n");
 			break;
@@ -402,7 +409,8 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum v4l2_memory memory,
 
 	dprintk(1, "allocated %d buffers, %d plane(s) each\n",
 			buffer, num_planes);
-
+	printk(KERN_INFO "allocated %d buffers, %d plane(s) each\n",
+			buffer, num_planes);
 	return buffer;
 }
 
@@ -2237,6 +2245,7 @@ static int vb2_internal_streamon(struct vb2_queue *q, enum v4l2_buf_type type)
 	 * Tell driver to start streaming provided sufficient buffers
 	 * are available.
 	 */
+printk(KERN_INFO "vb2_internal_streamon()\n");
 	if (q->queued_count >= q->min_buffers_needed) {
 		ret = vb2_start_streaming(q);
 		if (ret) {
@@ -2525,7 +2534,7 @@ int vb2_mmap(struct vb2_queue *q, struct vm_area_struct *vma)
 			"MMAP invalid, as it would overflow buffer length\n");
 		return -EINVAL;
 	}
-
+printk(KERN_INFO "memop mmap %pF\n", vb->vb2_queue->mem_ops->mmap);
 	mutex_lock(&q->mmap_lock);
 	ret = call_memop(vb, mmap, vb->planes[plane].mem_priv, vma);
 	mutex_unlock(&q->mmap_lock);
@@ -2830,7 +2839,7 @@ static int __vb2_init_fileio(struct vb2_queue *q, int read)
 		(read) ? "read" : "write", count, q->fileio_read_once,
 		q->fileio_write_immediately);
 
-	fileio = kzalloc(sizeof(struct vb2_fileio_data), GFP_KERNEL);
+	fileio = kzalloc(sizeof(struct vb2_fileio_data), GFP_KERNEL|VB2_CORE_FLAG);
 	if (fileio == NULL)
 		return -ENOMEM;
 
@@ -3223,7 +3232,7 @@ int vb2_thread_start(struct vb2_queue *q, vb2_thread_fnc fnc, void *priv,
 	if (WARN_ON(q->fileio))
 		return -EBUSY;
 
-	threadio = kzalloc(sizeof(*threadio), GFP_KERNEL);
+	threadio = kzalloc(sizeof(*threadio), GFP_KERNEL|VB2_CORE_FLAG);
 	if (threadio == NULL)
 		return -ENOMEM;
 	threadio->fnc = fnc;

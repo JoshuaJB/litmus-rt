@@ -28,6 +28,7 @@
 #include <litmus/cache_proc.h>
 #include <litmus/mc2_common.h>
 #include <litmus/replicate_lib.h>
+#include <litmus/page_dev.h>
 
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
@@ -350,8 +351,15 @@ extern struct page *new_alloc_page(struct page *page, unsigned long node, int **
 static struct page *alloc_colored_page(struct page *page, unsigned long node, int **result)
 {
 	struct page *newpage;
+	gfp_t gfp_mask;
 	
-	newpage = alloc_pages(GFP_HIGHUSER_MOVABLE|GFP_COLOR, 0);
+	gfp_mask = GFP_HIGHUSER_MOVABLE;
+	if (node != 8)
+		gfp_mask |= GFP_COLOR;
+	if (node == 9)
+		gfp_mask |= GFP_CPU1;
+	
+	newpage = alloc_pages(gfp_mask, 0);
 	
 	return newpage;
 }
@@ -378,6 +386,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		
 	LIST_HEAD(pagelist);
 	LIST_HEAD(task_shared_pagelist);
+	LIST_HEAD(fakedev_pagelist);
 
 	migrate_prep();
 	
@@ -396,7 +405,11 @@ asmlinkage long sys_set_page_color(int cpu)
 		unsigned int num_pages = 0, i;
 		struct page *old_page = NULL;
 		int pages_in_vma = 0;
+		int fakedev_pages = 0;
 		
+		if (vma_itr->vm_flags & VM_DONOTMOVE) {
+			fakedev_pages = 1;
+		}
 		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 		/* Traverse all pages in vm_area_struct */
 		for (i = 0; i < num_pages; i++) {
@@ -412,7 +425,13 @@ asmlinkage long sys_set_page_color(int cpu)
 				put_page(old_page);
 				continue;
 			}
-			
+			/*
+			if (PageDirty(old_page)) {
+				TRACE("Dirty Page!\n");
+				put_page(old_page);
+				continue;
+			}
+			*/
 			TRACE_TASK(current, "addr: %08x, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-");
 			pages_in_vma++;
 
@@ -460,12 +479,18 @@ asmlinkage long sys_set_page_color(int cpu)
 			else {
 				ret = isolate_lru_page(old_page);
 				if (!ret) {
-					list_add_tail(&old_page->lru, &pagelist);
+					if (fakedev_pages == 0)
+						list_add_tail(&old_page->lru, &pagelist);
+					else
+						list_add_tail(&old_page->lru, &fakedev_pagelist);
+					
 					inc_zone_page_state(old_page, NR_ISOLATED_ANON + !PageSwapBacked(old_page));
 					nr_pages++;
-				} else {
+				} else if (!is_in_correct_bank(old_page, cpu)) {
 					TRACE_TASK(current, "isolate_lru_page for a private page failed\n");
 					nr_failed++;
+				} else {
+					TRACE_TASK(current, "page is already in the correct bank\n");
 				}
 				put_page(old_page);
 			}
@@ -491,6 +516,16 @@ asmlinkage long sys_set_page_color(int cpu)
 		}
 	}
 
+	/* Migrate fakedev pages */
+	if (!list_empty(&fakedev_pagelist)) {
+		ret = migrate_pages(&fakedev_pagelist, alloc_colored_page, NULL, 9, MIGRATE_SYNC, MR_SYSCALL);
+		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
+		nr_not_migrated = ret;
+		if (ret) {
+			putback_movable_pages(&fakedev_pagelist);
+		}
+	}
+	
 	/* Replicate shared pages */
 	if (!list_empty(&task_shared_pagelist)) {
 		ret = replicate_pages(&task_shared_pagelist, alloc_colored_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
@@ -569,6 +604,7 @@ asmlinkage long sys_test_call(unsigned int param)
 				}
 				
 				TRACE_TASK(current, "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
+				printk(KERN_INFO "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
 				put_page(old_page);
 			}
 			vma_itr = vma_itr->vm_next;

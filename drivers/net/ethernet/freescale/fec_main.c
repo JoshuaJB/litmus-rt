@@ -65,6 +65,13 @@
 
 #include "fec.h"
 
+#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define FEC_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define FEC_FLAG	(0)
+#endif	
+
 static void set_multicast_list(struct net_device *ndev);
 static void fec_enet_itr_coal_init(struct net_device *ndev);
 
@@ -2628,7 +2635,7 @@ static int fec_enet_alloc_queue(struct net_device *ndev)
 	struct fec_enet_priv_tx_q *txq;
 
 	for (i = 0; i < fep->num_tx_queues; i++) {
-		txq = kzalloc(sizeof(*txq), GFP_KERNEL);
+		txq = kzalloc(sizeof(*txq), GFP_KERNEL|FEC_FLAG);
 		if (!txq) {
 			ret = -ENOMEM;
 			goto alloc_failed;
@@ -2645,7 +2652,7 @@ static int fec_enet_alloc_queue(struct net_device *ndev)
 		txq->tso_hdrs = dma_alloc_coherent(NULL,
 					txq->tx_ring_size * TSO_HEADER_SIZE,
 					&txq->tso_hdrs_dma,
-					GFP_KERNEL);
+					GFP_KERNEL|FEC_FLAG);
 		if (!txq->tso_hdrs) {
 			ret = -ENOMEM;
 			goto alloc_failed;
@@ -2654,7 +2661,7 @@ static int fec_enet_alloc_queue(struct net_device *ndev)
 
 	for (i = 0; i < fep->num_rx_queues; i++) {
 		fep->rx_queue[i] = kzalloc(sizeof(*fep->rx_queue[i]),
-					   GFP_KERNEL);
+					   GFP_KERNEL|FEC_FLAG);
 		if (!fep->rx_queue[i]) {
 			ret = -ENOMEM;
 			goto alloc_failed;
@@ -2723,7 +2730,7 @@ fec_enet_alloc_txq_buffers(struct net_device *ndev, unsigned int queue)
 	txq = fep->tx_queue[queue];
 	bdp = txq->tx_bd_base;
 	for (i = 0; i < txq->tx_ring_size; i++) {
-		txq->tx_bounce[i] = kmalloc(FEC_ENET_TX_FRSIZE, GFP_KERNEL);
+		txq->tx_bounce[i] = kmalloc(FEC_ENET_TX_FRSIZE, GFP_KERNEL|FEC_FLAG);
 		if (!txq->tx_bounce[i])
 			goto err_alloc;
 
@@ -3037,7 +3044,7 @@ static int fec_enet_init(struct net_device *ndev)
 
 	/* Allocate memory for buffer descriptors. */
 	cbd_base = dma_alloc_coherent(NULL, bd_size, &bd_dma,
-				      GFP_KERNEL);
+				      GFP_KERNEL|FEC_FLAG);
 	if (!cbd_base) {
 		return -ENOMEM;
 	}

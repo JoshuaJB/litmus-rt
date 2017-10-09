@@ -4629,6 +4629,7 @@ static int napi_poll(struct napi_struct *n, struct list_head *repoll)
 	 */
 	work = 0;
 	if (test_bit(NAPI_STATE_SCHED, &n->state)) {
+		// fec_enet_rx_napi() is called
 		work = n->poll(n, weight);
 		trace_napi_poll(n);
 	}

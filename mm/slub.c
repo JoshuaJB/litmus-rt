@@ -115,6 +115,26 @@
  * 			the fast path and disables lockless freelists.
  */
 
+// This Address Decoding is used in imx6-sabredsd platform
+#define BANK_MASK  0x38000000     
+#define BANK_SHIFT  27
+
+#define CACHE_MASK  0x0000f000      
+#define CACHE_SHIFT 12
+#define MAX_COLOR_NODE	128
+
+/* Decoding page color, 0~15 */ 
+static inline unsigned int page_color(struct page *page)
+{
+	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
+}
+
+/* Decoding page bank number, 0~7 */ 
+static inline unsigned int page_bank(struct page *page)
+{
+	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
+}
+ 
 static inline int kmem_cache_debug(struct kmem_cache *s)
 {
 #ifdef CONFIG_SLUB_DEBUG
@@ -1322,8 +1342,8 @@ static inline struct page *alloc_slab_page(struct kmem_cache *s,
 
 	if (node == NUMA_NO_NODE) {
 #ifdef CONFIG_SCHED_DEBUG_TRACE		
-		if (flags&GFP_COLOR)
-			printk(KERN_INFO "alloc_pages calls with GFP_COLOR order = %d\n", order);
+//		if (flags&GFP_COLOR)
+//			printk(KERN_INFO "alloc_pages calls with GFP_COLOR order = %d\n", order);
 #endif		
 		page = alloc_pages(flags, order);
 	}
@@ -1343,8 +1363,8 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	gfp_t alloc_gfp;
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags&GFP_COLOR)
-		printk(KERN_INFO "gfp_allowed_mask = %08x\n", gfp_allowed_mask);
+//	if (flags&GFP_COLOR)
+//		printk(KERN_INFO "gfp_allowed_mask = %08x\n", gfp_allowed_mask);
 #endif
 	
 	flags &= gfp_allowed_mask;
@@ -1361,8 +1381,8 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags&__GFP_COLOR)
-		printk(KERN_INFO "allocate_slab with GFP_COLOR alloc_gfp = %08x\n", alloc_gfp);
+//	if (flags&__GFP_COLOR)
+//		printk(KERN_INFO "allocate_slab with GFP_COLOR alloc_gfp = %08x\n", alloc_gfp);
 #endif
 
 	page = alloc_slab_page(s, alloc_gfp, node, oo);
@@ -2240,8 +2260,8 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 	page = new_slab(s, flags, node);
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags&GFP_COLOR)
-		printk(KERN_INFO "new_slab_objects(): gets page %p\n", page);
+//	if (flags&GFP_COLOR)
+//		printk(KERN_INFO "new_slab_objects(): gets page %p color %d, bank %d\n", page, page_color(page), page_bank(page));
 #endif
 
 	if (page) {
@@ -2331,8 +2351,8 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	unsigned long flags;
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (gfpflags&GFP_COLOR)
-		printk(KERN_INFO "__slab_alloc slow_path\n");
+//	if (gfpflags&GFP_COLOR)
+//		printk(KERN_INFO "__slab_alloc slow_path\n");
 #endif
 
 	local_irq_save(flags);
@@ -2346,8 +2366,8 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 #endif
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (gfpflags&GFP_COLOR)
-		printk(KERN_INFO "__slab_alloc : page %p, partial %p\n", c->page, c->partial);
+//	if (gfpflags&GFP_COLOR)
+//		printk(KERN_INFO "__slab_alloc : page %p, partial %p\n", c->page, c->partial);
 #endif
 
 	page = c->page;
@@ -3340,8 +3360,8 @@ void *__kmalloc(size_t size, gfp_t flags)
 	void *ret;
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags & GFP_COLOR)
-		printk(KERN_INFO "kmalloc size %d\n", size);
+//	if (flags & GFP_COLOR)
+//		printk(KERN_INFO "kmalloc size %d\n", size);
 #endif
 
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE))
@@ -3350,16 +3370,16 @@ void *__kmalloc(size_t size, gfp_t flags)
 	s = kmalloc_slab(size, flags);
 	
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags & GFP_COLOR)
-		printk(KERN_INFO "kmalloc_slab %p\n", s);
+//	if (flags & GFP_COLOR)
+//		printk(KERN_INFO "kmalloc_slab %p\n", s);
 #endif
 
 	if (unlikely(ZERO_OR_NULL_PTR(s)))
 		return s;
 
 #ifdef CONFIG_SCHED_DEBUG_TRACE
-	if (flags & GFP_COLOR)
-		printk(KERN_INFO "slab_alloc calls!!\n");
+//	if (flags & GFP_COLOR)
+//		printk(KERN_INFO "slab_alloc calls!!\n");
 #endif
 
 	ret = slab_alloc(s, flags, _RET_IP_);

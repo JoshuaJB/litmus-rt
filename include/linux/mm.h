@@ -172,6 +172,12 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_MPX		VM_ARCH_2
 #endif
 
+#if defined(CONFIG_ARM)
+/* MPX specific bounds table or bounds directory */
+# define VM_DONOTMOVE		VM_ARCH_2
+#endif
+
+
 #ifndef VM_GROWSUP
 # define VM_GROWSUP	VM_NONE
 #endif

@@ -333,7 +333,7 @@ void *dma_pool_alloc(struct dma_pool *pool, gfp_t mem_flags,
 
 	/* pool_alloc_page() might sleep, so temporarily drop &pool->lock */
 	spin_unlock_irqrestore(&pool->lock, flags);
-
+	printk(KERN_INFO "dma_pool_alloc(): called with %x flags\n", mem_flags);
 	page = pool_alloc_page(pool, mem_flags);
 	if (!page)
 		return NULL;

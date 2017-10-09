@@ -21,6 +21,14 @@
 #include <media/videobuf2-vmalloc.h>
 #include <media/videobuf2-memops.h>
 
+
+#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define VB2_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define VB2_FLAG	(GFP_COLOR)
+#endif
+ 
 struct vb2_vmalloc_buf {
 	void				*vaddr;
 	struct page			**pages;
@@ -39,13 +47,18 @@ static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size,
 			       enum dma_data_direction dma_dir, gfp_t gfp_flags)
 {
 	struct vb2_vmalloc_buf *buf;
-
-	buf = kzalloc(sizeof(*buf), GFP_KERNEL | gfp_flags);
+/* video buffer allocation */
+printk(KERN_INFO "vb2_vmalloc_alloc(): size %ld requested\n", size);
+	buf = kzalloc(sizeof(*buf), GFP_KERNEL | gfp_flags | VB2_FLAG);
 	if (!buf)
 		return NULL;
 
 	buf->size = size;
-	buf->vaddr = vmalloc_user(buf->size);
+#ifdef ENABLE_WORST_CASE
+	buf->vaddr = vmalloc_color_user_cpu1(buf->size);
+#else
+	buf->vaddr = vmalloc_color_user(buf->size);
+#endif
 	buf->dma_dir = dma_dir;
 	buf->handler.refcount = &buf->refcount;
 	buf->handler.put = vb2_vmalloc_put;
@@ -81,7 +94,7 @@ static void *vb2_vmalloc_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	struct vm_area_struct *vma;
 	dma_addr_t physp;
 
-	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
+	buf = kzalloc(sizeof(*buf), GFP_KERNEL | VB2_FLAG);
 	if (!buf)
 		return NULL;
 
@@ -103,7 +116,7 @@ static void *vb2_vmalloc_get_userptr(void *alloc_ctx, unsigned long vaddr,
 		last  = (vaddr + size - 1) >> PAGE_SHIFT;
 		buf->n_pages = last - first + 1;
 		buf->pages = kzalloc(buf->n_pages * sizeof(struct page *),
-				     GFP_KERNEL);
+				     GFP_KERNEL | VB2_FLAG);
 		if (!buf->pages)
 			goto fail_pages_array_alloc;
 
@@ -233,12 +246,12 @@ static int vb2_vmalloc_dmabuf_ops_attach(struct dma_buf *dbuf, struct device *de
 	int ret;
 	int i;
 
-	attach = kzalloc(sizeof(*attach), GFP_KERNEL);
+	attach = kzalloc(sizeof(*attach), GFP_KERNEL | VB2_FLAG);
 	if (!attach)
 		return -ENOMEM;
 
 	sgt = &attach->sgt;
-	ret = sg_alloc_table(sgt, num_pages, GFP_KERNEL);
+	ret = sg_alloc_table(sgt, num_pages, GFP_KERNEL | VB2_FLAG);
 	if (ret) {
 		kfree(attach);
 		return ret;
@@ -429,7 +442,7 @@ static void *vb2_vmalloc_attach_dmabuf(void *alloc_ctx, struct dma_buf *dbuf,
 	if (dbuf->size < size)
 		return ERR_PTR(-EFAULT);
 
-	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
+	buf = kzalloc(sizeof(*buf), GFP_KERNEL | VB2_FLAG);
 	if (!buf)
 		return ERR_PTR(-ENOMEM);
 

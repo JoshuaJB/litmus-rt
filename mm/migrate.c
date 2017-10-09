@@ -638,7 +638,18 @@ void replicate_page_copy(struct page *newpage, struct page *page)
 		SetPageMappedToDisk(newpage);
 
 	if (PageDirty(page)) {
-		BUG();
+		clear_page_dirty_for_io(page);
+		/*
+		 * Want to mark the page and the radix tree as dirty, and
+		 * redo the accounting that clear_page_dirty_for_io undid,
+		 * but we can't use set_page_dirty because that function
+		 * is actually a signal that all of the page has become dirty.
+		 * Whereas only part of our page may be dirty.
+		 */
+		if (PageSwapBacked(page))
+			SetPageDirty(newpage);
+		else
+			__set_page_dirty_nobuffers(newpage);
  	}
 
 	/*

@@ -26,6 +26,13 @@
 
 #include "uvcvideo.h"
 
+#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define UVC_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define UVC_FLAG	(GFP_COLOR)
+#endif	
+
 /* ------------------------------------------------------------------------
  * UVC Controls
  */
@@ -167,7 +174,7 @@ static int uvc_get_video_ctrl(struct uvc_streaming *stream,
 			query == UVC_GET_DEF)
 		return -EIO;
 
-	data = kmalloc(size, GFP_KERNEL);
+	data = kmalloc(size, GFP_KERNEL|UVC_FLAG);
 	if (data == NULL)
 		return -ENOMEM;
 
@@ -251,7 +258,7 @@ static int uvc_set_video_ctrl(struct uvc_streaming *stream,
 	int ret;
 
 	size = stream->dev->uvc_version >= 0x0110 ? 34 : 26;
-	data = kzalloc(size, GFP_KERNEL);
+	data = kzalloc(size, GFP_KERNEL|UVC_FLAG);
 	if (data == NULL)
 		return -ENOMEM;
 
@@ -494,7 +501,7 @@ static int uvc_video_clock_init(struct uvc_streaming *stream)
 	clock->size = 32;
 
 	clock->samples = kmalloc(clock->size * sizeof(*clock->samples),
-				 GFP_KERNEL);
+				 GFP_KERNEL|UVC_FLAG);
 	if (clock->samples == NULL)
 		return -ENOMEM;
 
@@ -1343,7 +1350,7 @@ static void uvc_video_complete(struct urb *urb)
 
 	stream->decode(urb, stream, buf);
 
-	if ((ret = usb_submit_urb(urb, GFP_ATOMIC)) < 0) {
+	if ((ret = usb_submit_urb(urb, GFP_ATOMIC|UVC_FLAG)) < 0) {
 		uvc_printk(KERN_ERR, "Failed to resubmit video URB (%d).\n",
 			ret);
 	}
@@ -1406,10 +1413,10 @@ static int uvc_alloc_urb_buffers(struct uvc_streaming *stream,
 #ifndef CONFIG_DMA_NONCOHERENT
 			stream->urb_buffer[i] = usb_alloc_coherent(
 				stream->dev->udev, stream->urb_size,
-				gfp_flags | __GFP_NOWARN | GFP_COLOR, &stream->urb_dma[i]);
+				gfp_flags | __GFP_NOWARN | UVC_FLAG, &stream->urb_dma[i]);
 #else
 			stream->urb_buffer[i] =
-			    kmalloc(stream->urb_size, gfp_flags | __GFP_NOWARN | GFP_COLOR);
+			    kmalloc(stream->urb_size, gfp_flags | __GFP_NOWARN | UVC_FLAG;
 #endif
 			if (!stream->urb_buffer[i]) {
 				uvc_free_urb_buffers(stream);
@@ -1492,14 +1499,14 @@ static int uvc_init_video_isoc(struct uvc_streaming *stream,
 	psize = uvc_endpoint_max_bpi(stream->dev->udev, ep);
 	size = stream->ctrl.dwMaxVideoFrameSize;
 
-	npackets = uvc_alloc_urb_buffers(stream, size, psize, gfp_flags);
+	npackets = uvc_alloc_urb_buffers(stream, size, psize, gfp_flags|UVC_FLAG);
 	if (npackets == 0)
 		return -ENOMEM;
 
 	size = npackets * psize;
 
 	for (i = 0; i < UVC_URBS; ++i) {
-		urb = usb_alloc_urb(npackets, gfp_flags);
+		urb = usb_alloc_urb(npackets, gfp_flags|UVC_FLAG);
 		if (urb == NULL) {
 			uvc_uninit_video(stream, 1);
 			return -ENOMEM;
@@ -1548,7 +1555,7 @@ static int uvc_init_video_bulk(struct uvc_streaming *stream,
 	size = stream->ctrl.dwMaxPayloadTransferSize;
 	stream->bulk.max_payload_size = size;
 
-	npackets = uvc_alloc_urb_buffers(stream, size, psize, gfp_flags);
+	npackets = uvc_alloc_urb_buffers(stream, size, psize, gfp_flags|UVC_FLAG);
 	if (npackets == 0)
 		return -ENOMEM;
 
@@ -1565,7 +1572,7 @@ static int uvc_init_video_bulk(struct uvc_streaming *stream,
 		size = 0;
 
 	for (i = 0; i < UVC_URBS; ++i) {
-		urb = usb_alloc_urb(0, gfp_flags);
+		urb = usb_alloc_urb(0, gfp_flags|UVC_FLAG);
 		if (urb == NULL) {
 			uvc_uninit_video(stream, 1);
 			return -ENOMEM;
@@ -1654,7 +1661,7 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 		if (ret < 0)
 			return ret;
 
-		ret = uvc_init_video_isoc(stream, best_ep, gfp_flags);
+		ret = uvc_init_video_isoc(stream, best_ep, gfp_flags|UVC_FLAG);
 	} else {
 		/* Bulk endpoint, proceed to URB initialization. */
 		ep = uvc_find_endpoint(&intf->altsetting[0],
@@ -1662,7 +1669,7 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 		if (ep == NULL)
 			return -EIO;
 
-		ret = uvc_init_video_bulk(stream, ep, gfp_flags);
+		ret = uvc_init_video_bulk(stream, ep, gfp_flags|UVC_FLAG);
 	}
 
 	if (ret < 0)
@@ -1670,7 +1677,7 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 
 	/* Submit the URBs. */
 	for (i = 0; i < UVC_URBS; ++i) {
-		ret = usb_submit_urb(stream->urb[i], gfp_flags);
+		ret = usb_submit_urb(stream->urb[i], gfp_flags|UVC_FLAG);
 		if (ret < 0) {
 			uvc_printk(KERN_ERR, "Failed to submit URB %u "
 					"(%d).\n", i, ret);
@@ -1741,7 +1748,7 @@ int uvc_video_resume(struct uvc_streaming *stream, int reset)
 	if (ret < 0)
 		return ret;
 
-	return uvc_init_video(stream, GFP_NOIO);
+	return uvc_init_video(stream, GFP_NOIO|UVC_FLAG);
 }
 
 /* ------------------------------------------------------------------------
@@ -1892,7 +1899,7 @@ int uvc_video_enable(struct uvc_streaming *stream, int enable)
 	if (ret < 0)
 		goto error_commit;
 
-	ret = uvc_init_video(stream, GFP_KERNEL);
+	ret = uvc_init_video(stream, GFP_KERNEL|UVC_FLAG);
 	if (ret < 0)
 		goto error_video;
 

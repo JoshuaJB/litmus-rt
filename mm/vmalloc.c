@@ -1803,6 +1803,47 @@ void *vmalloc_user(unsigned long size)
 EXPORT_SYMBOL(vmalloc_user);
 
 /**
+ * vmalloc_color_user - allocate zeroed virtually contiguous memory for userspace
+ * @size: allocation size
+ *
+ * The resulting memory area is zeroed so it can be mapped to userspace
+ * without leaking data.
+ */
+void *vmalloc_color_user(unsigned long size)
+{
+	struct vm_struct *area;
+	void *ret;
+
+	ret = __vmalloc_node(size, SHMLBA,
+			     GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO | GFP_COLOR,
+			     PAGE_KERNEL, NUMA_NO_NODE,
+			     __builtin_return_address(0));
+	if (ret) {
+		area = find_vm_area(ret);
+		area->flags |= VM_USERMAP;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(vmalloc_color_user);
+
+void *vmalloc_color_user_cpu1(unsigned long size)
+{
+	struct vm_struct *area;
+	void *ret;
+
+	ret = __vmalloc_node(size, SHMLBA,
+			     GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO | GFP_COLOR | GFP_CPU1,
+			     PAGE_KERNEL, NUMA_NO_NODE,
+			     __builtin_return_address(0));
+	if (ret) {
+		area = find_vm_area(ret);
+		area->flags |= VM_USERMAP;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(vmalloc_color_user_cpu1);
+
+/**
  *	vmalloc_node  -  allocate memory on a specific node
  *	@size:		allocation size
  *	@node:		numa node

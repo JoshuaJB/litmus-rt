@@ -45,6 +45,7 @@
 #include <asm/mach/time.h>
 
 #include <litmus/cache_proc.h>
+#include <litmus/litmus.h>
 
 unsigned long irq_err_count;
 

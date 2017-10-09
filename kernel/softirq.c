@@ -27,6 +27,9 @@
 #include <linux/tick.h>
 #include <linux/irq.h>
 
+/* for measuring NET_RX bottom half */
+#include <litmus/trace.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
 
@@ -273,7 +276,12 @@ restart:
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
 		trace_softirq_entry(vec_nr);
+//		if (vec_nr == 3)
+//			TS_NET_RX_SOFTIRQ_START;
+//			net_rx_action() is called here
 		h->action(h);
+//		if (vec_nr == 3)
+//			TS_NET_RX_SOFTIRQ_END;
 		trace_softirq_exit(vec_nr);
 		if (unlikely(prev_count != preempt_count())) {
 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",

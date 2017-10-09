@@ -36,6 +36,7 @@ struct vm_area_struct;
 #define ___GFP_OTHER_NODE	0x800000u
 #define ___GFP_WRITE		0x1000000u
 #define ___GFP_COLOR		0x2000000u
+#define ___GFP_CPU1			0x4000000u
 /* If the above are modified, __GFP_BITS_SHIFT may need updating */
 
 /*
@@ -96,6 +97,7 @@ struct vm_area_struct;
 #define __GFP_OTHER_NODE ((__force gfp_t)___GFP_OTHER_NODE) /* On behalf of other node */
 #define __GFP_WRITE	((__force gfp_t)___GFP_WRITE)	/* Allocator intends to dirty page */
 #define __GFP_COLOR ((__force gfp_t)___GFP_COLOR)	/* Colored page request */
+#define __GFP_CPU1 ((__force gfp_t)___GFP_CPU1)		/* use cpu1 bank */
 
 /*
  * This may seem redundant, but it's a way of annotating false positives vs.
@@ -103,7 +105,7 @@ struct vm_area_struct;
  */
 #define __GFP_NOTRACK_FALSE_POSITIVE (__GFP_NOTRACK)
 
-#define __GFP_BITS_SHIFT 26	/* Room for N __GFP_FOO bits */
+#define __GFP_BITS_SHIFT 27	/* Room for N __GFP_FOO bits */
 #define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
 
 /* This equals 0, but use constants in case they ever change */
@@ -129,7 +131,7 @@ struct vm_area_struct;
 /* Control page allocator reclaim behavior */
 #define GFP_RECLAIM_MASK (__GFP_WAIT|__GFP_HIGH|__GFP_IO|__GFP_FS|\
 			__GFP_NOWARN|__GFP_REPEAT|__GFP_NOFAIL|\
-			__GFP_NORETRY|__GFP_MEMALLOC|__GFP_NOMEMALLOC)
+			__GFP_NORETRY|__GFP_MEMALLOC|__GFP_NOMEMALLOC|__GFP_COLOR|__GFP_CPU1)
 
 /* Control slab gfp mask during early boot */
 #define GFP_BOOT_MASK (__GFP_BITS_MASK & ~(__GFP_WAIT|__GFP_IO|__GFP_FS))
@@ -150,6 +152,8 @@ struct vm_area_struct;
 
 /* Colored page requests */
 #define GFP_COLOR	__GFP_COLOR
+
+#define GFP_CPU1	__GFP_CPU1
 
 /* Convert GFP flags to their corresponding migrate type */
 static inline int gfpflags_to_migratetype(const gfp_t gfp_flags)

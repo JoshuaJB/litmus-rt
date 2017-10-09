@@ -77,6 +77,13 @@
 #include <linux/capability.h>
 #include <linux/user_namespace.h>
 
+#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define SKB_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define SKB_FLAG	(0)
+#endif	
+
 struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
 
@@ -133,14 +140,14 @@ static void *__kmalloc_reserve(size_t size, gfp_t flags, int node,
 	 * to the reserves, fail.
 	 */
 	obj = kmalloc_node_track_caller(size,
-					flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+					flags | __GFP_NOMEMALLOC | __GFP_NOWARN | SKB_FLAG,
 					node);
 	if (obj || !(gfp_pfmemalloc_allowed(flags)))
 		goto out;
 
 	/* Try again but now we are using pfmemalloc reserves */
 	ret_pfmemalloc = true;
-	obj = kmalloc_node_track_caller(size, flags, node);
+	obj = kmalloc_node_track_caller(size, flags | SKB_FLAG, node);
 
 out:
 	if (pfmemalloc)
@@ -161,7 +168,7 @@ struct sk_buff *__alloc_skb_head(gfp_t gfp_mask, int node)
 
 	/* Get the HEAD */
 	skb = kmem_cache_alloc_node(skbuff_head_cache,
-				    gfp_mask & ~__GFP_DMA, node);
+				    (gfp_mask & ~__GFP_DMA) | SKB_FLAG, node);
 	if (!skb)
 		goto out;
 
@@ -213,7 +220,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 		gfp_mask |= __GFP_MEMALLOC;
 
 	/* Get the HEAD */
-	skb = kmem_cache_alloc_node(cache, gfp_mask & ~__GFP_DMA, node);
+	skb = kmem_cache_alloc_node(cache, (gfp_mask & ~__GFP_DMA) | SKB_FLAG, node);
 	if (!skb)
 		goto out;
 	prefetchw(skb);
@@ -225,7 +232,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	 */
 	size = SKB_DATA_ALIGN(size);
 	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
-	data = kmalloc_reserve(size, gfp_mask, node, &pfmemalloc);
+	data = kmalloc_reserve(size, gfp_mask | SKB_FLAG, node, &pfmemalloc);
 	if (!data)
 		goto nodata;
 	/* kmalloc(size) might give us more room than requested.
@@ -304,7 +311,7 @@ struct sk_buff *__build_skb(void *data, unsigned int frag_size)
 	struct sk_buff *skb;
 	unsigned int size = frag_size ? : ksize(data);
 
-	skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC);
+	skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC | SKB_FLAG);
 	if (!skb)
 		return NULL;
 
@@ -367,12 +374,12 @@ static struct page *__page_frag_refill(struct netdev_alloc_cache *nc,
 	if (order) {
 		gfp_mask |= __GFP_COMP | __GFP_NOWARN | __GFP_NORETRY |
 			    __GFP_NOMEMALLOC;
-		page = alloc_pages_node(NUMA_NO_NODE, gfp_mask, order);
+		page = alloc_pages_node(NUMA_NO_NODE, gfp_mask | SKB_FLAG, order);
 		nc->frag.size = PAGE_SIZE << (page ? order : 0);
 	}
 
 	if (unlikely(!page))
-		page = alloc_pages_node(NUMA_NO_NODE, gfp, 0);
+		page = alloc_pages_node(NUMA_NO_NODE, gfp | SKB_FLAG, 0);
 
 	nc->frag.page = page;
 
@@ -389,7 +396,7 @@ static void *__alloc_page_frag(struct netdev_alloc_cache __percpu *cache,
 
 	if (unlikely(!page)) {
 refill:
-		page = __page_frag_refill(nc, gfp_mask);
+		page = __page_frag_refill(nc, gfp_mask | SKB_FLAG);
 		if (!page)
 			return NULL;
 
@@ -434,7 +441,7 @@ static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
 	void *data;
 
 	local_irq_save(flags);
-	data = __alloc_page_frag(&netdev_alloc_cache, fragsz, gfp_mask);
+	data = __alloc_page_frag(&netdev_alloc_cache, fragsz, gfp_mask | SKB_FLAG);
 	local_irq_restore(flags);
 	return data;
 }
@@ -448,18 +455,18 @@ static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
  */
 void *netdev_alloc_frag(unsigned int fragsz)
 {
-	return __netdev_alloc_frag(fragsz, GFP_ATOMIC | __GFP_COLD);
+	return __netdev_alloc_frag(fragsz, GFP_ATOMIC | __GFP_COLD | SKB_FLAG);
 }
 EXPORT_SYMBOL(netdev_alloc_frag);
 
 static void *__napi_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
 {
-	return __alloc_page_frag(&napi_alloc_cache, fragsz, gfp_mask);
+	return __alloc_page_frag(&napi_alloc_cache, fragsz, gfp_mask | SKB_FLAG);
 }
 
 void *napi_alloc_frag(unsigned int fragsz)
 {
-	return __napi_alloc_frag(fragsz, GFP_ATOMIC | __GFP_COLD);
+	return __napi_alloc_frag(fragsz, GFP_ATOMIC | __GFP_COLD | SKB_FLAG);
 }
 EXPORT_SYMBOL(napi_alloc_frag);
 
@@ -493,8 +500,8 @@ static struct sk_buff *__alloc_rx_skb(unsigned int length, gfp_t gfp_mask,
 			gfp_mask |= __GFP_MEMALLOC;
 
 		data = (flags & SKB_ALLOC_NAPI) ?
-			__napi_alloc_frag(fragsz, gfp_mask) :
-			__netdev_alloc_frag(fragsz, gfp_mask);
+			__napi_alloc_frag(fragsz, gfp_mask | SKB_FLAG) :
+			__netdev_alloc_frag(fragsz, gfp_mask | SKB_FLAG);
 
 		if (likely(data)) {
 			skb = build_skb(data, fragsz);
@@ -502,7 +509,7 @@ static struct sk_buff *__alloc_rx_skb(unsigned int length, gfp_t gfp_mask,
 				put_page(virt_to_head_page(data));
 		}
 	} else {
-		skb = __alloc_skb(length, gfp_mask,
+		skb = __alloc_skb(length, gfp_mask | SKB_FLAG,
 				  SKB_ALLOC_RX, NUMA_NO_NODE);
 	}
 	return skb;
@@ -527,7 +534,8 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
 	struct sk_buff *skb;
 
 	length += NET_SKB_PAD;
-	skb = __alloc_rx_skb(length, gfp_mask, 0);
+
+	skb = __alloc_rx_skb(length, gfp_mask | SKB_FLAG, 0);
 
 	if (likely(skb)) {
 		skb_reserve(skb, NET_SKB_PAD);
@@ -557,7 +565,7 @@ struct sk_buff *__napi_alloc_skb(struct napi_struct *napi,
 	struct sk_buff *skb;
 
 	length += NET_SKB_PAD + NET_IP_ALIGN;
-	skb = __alloc_rx_skb(length, gfp_mask, SKB_ALLOC_NAPI);
+	skb = __alloc_rx_skb(length, gfp_mask | SKB_FLAG, SKB_ALLOC_NAPI);
 
 	if (likely(skb)) {
 		skb_reserve(skb, NET_SKB_PAD + NET_IP_ALIGN);
@@ -932,7 +940,7 @@ int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
 		u8 *vaddr;
 		skb_frag_t *f = &skb_shinfo(skb)->frags[i];
 
-		page = alloc_page(gfp_mask);
+		page = alloc_page(gfp_mask | SKB_FLAG);
 		if (!page) {
 			while (head) {
 				struct page *next = (struct page *)page_private(head);
@@ -988,7 +996,7 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 						       skb1);
 	struct sk_buff *n;
 
-	if (skb_orphan_frags(skb, gfp_mask))
+	if (skb_orphan_frags(skb, gfp_mask | SKB_FLAG))
 		return NULL;
 
 	if (skb->fclone == SKB_FCLONE_ORIG &&
@@ -999,7 +1007,7 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 		if (skb_pfmemalloc(skb))
 			gfp_mask |= __GFP_MEMALLOC;
 
-		n = kmem_cache_alloc(skbuff_head_cache, gfp_mask);
+		n = kmem_cache_alloc(skbuff_head_cache, gfp_mask | SKB_FLAG);
 		if (!n)
 			return NULL;
 
@@ -1063,7 +1071,7 @@ struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp_mask)
 {
 	int headerlen = skb_headroom(skb);
 	unsigned int size = skb_end_offset(skb) + skb->data_len;
-	struct sk_buff *n = __alloc_skb(size, gfp_mask,
+	struct sk_buff *n = __alloc_skb(size, gfp_mask | SKB_FLAG,
 					skb_alloc_rx_flag(skb), NUMA_NO_NODE);
 
 	if (!n)
@@ -1104,7 +1112,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
 {
 	unsigned int size = skb_headlen(skb) + headroom;
 	int flags = skb_alloc_rx_flag(skb) | (fclone ? SKB_ALLOC_FCLONE : 0);
-	struct sk_buff *n = __alloc_skb(size, gfp_mask, flags, NUMA_NO_NODE);
+	struct sk_buff *n = __alloc_skb(size, gfp_mask | SKB_FLAG, flags, NUMA_NO_NODE);
 
 	if (!n)
 		goto out;
@@ -1123,7 +1131,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
 	if (skb_shinfo(skb)->nr_frags) {
 		int i;
 
-		if (skb_orphan_frags(skb, gfp_mask)) {
+		if (skb_orphan_frags(skb, gfp_mask | SKB_FLAG)) {
 			kfree_skb(n);
 			n = NULL;
 			goto out;
@@ -1180,7 +1188,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	if (skb_pfmemalloc(skb))
 		gfp_mask |= __GFP_MEMALLOC;
 	data = kmalloc_reserve(size + SKB_DATA_ALIGN(sizeof(struct skb_shared_info)),
-			       gfp_mask, NUMA_NO_NODE, NULL);
+			       gfp_mask | SKB_FLAG, NUMA_NO_NODE, NULL);
 	if (!data)
 		goto nodata;
 	size = SKB_WITH_OVERHEAD(ksize(data));
@@ -1201,7 +1209,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	 */
 	if (skb_cloned(skb)) {
 		/* copy this zero copy skb frags */
-		if (skb_orphan_frags(skb, gfp_mask))
+		if (skb_orphan_frags(skb, gfp_mask | SKB_FLAG))
 			goto nofrags;
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
 			skb_frag_ref(skb, i);
@@ -1286,7 +1294,7 @@ struct sk_buff *skb_copy_expand(const struct sk_buff *skb,
 	 *	Allocate the copy buffer
 	 */
 	struct sk_buff *n = __alloc_skb(newheadroom + skb->len + newtailroom,
-					gfp_mask, skb_alloc_rx_flag(skb),
+					gfp_mask | SKB_FLAG, skb_alloc_rx_flag(skb),
 					NUMA_NO_NODE);
 	int oldheadroom = skb_headroom(skb);
 	int head_copy_len, head_copy_off;
@@ -4387,7 +4395,7 @@ struct sk_buff *alloc_skb_with_frags(unsigned long header_len,
 		gfp_head |= __GFP_REPEAT;
 
 	*errcode = -ENOBUFS;
-	skb = alloc_skb(header_len, gfp_head);
+	skb = alloc_skb(header_len, gfp_head | SKB_FLAG);
 	if (!skb)
 		return NULL;
 
@@ -4401,7 +4409,7 @@ struct sk_buff *alloc_skb_with_frags(unsigned long header_len,
 				page = alloc_pages((gfp_mask & ~__GFP_WAIT) |
 						   __GFP_COMP |
 						   __GFP_NOWARN |
-						   __GFP_NORETRY,
+						   __GFP_NORETRY | SKB_FLAG,
 						   order);
 				if (page)
 					goto fill_page;
@@ -4411,7 +4419,7 @@ struct sk_buff *alloc_skb_with_frags(unsigned long header_len,
 			}
 			order--;
 		}
-		page = alloc_page(gfp_mask);
+		page = alloc_page(gfp_mask | SKB_FLAG);
 		if (!page)
 			goto failure;
 fill_page:
