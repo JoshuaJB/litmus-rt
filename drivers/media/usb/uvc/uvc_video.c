@@ -26,7 +26,7 @@
 
 #include "uvcvideo.h"
 
-#define ENABLE_WORST_CASE	1
+//#define ENABLE_WORST_CASE	1
 #ifdef ENABLE_WORST_CASE
 #define UVC_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
@@ -343,6 +343,7 @@ int uvc_probe_video(struct uvc_streaming *stream,
 			break;
 
 		if (stream->dev->quirks & UVC_QUIRK_PROBE_MINMAX) {
+			printk(KERN_INFO "uvc_probe_video(): no space error\n");
 			ret = -ENOSPC;
 			goto done;
 		}
@@ -1619,6 +1620,7 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 
 		/* Isochronous endpoint, select the alternate setting. */
 		bandwidth = stream->ctrl.dwMaxPayloadTransferSize;
+		//bandwidth = 1;
 
 		if (bandwidth == 0) {
 			uvc_trace(UVC_TRACE_VIDEO, "Device requested null "
@@ -1656,7 +1658,8 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 
 		uvc_trace(UVC_TRACE_VIDEO, "Selecting alternate setting %u "
 			"(%u B/frame bandwidth).\n", altsetting, best_psize);
-
+		printk(KERN_INFO "Selecting alternate setting %u "
+			"(%u B/frame bandwidth).\n", altsetting, best_psize);
 		ret = usb_set_interface(stream->dev->udev, intfnum, altsetting);
 		if (ret < 0)
 			return ret;

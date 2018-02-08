@@ -1757,7 +1757,7 @@ EXPORT_SYMBOL(vmalloc);
 void *vmalloc_color(unsigned long size)
 {
 	return __vmalloc_node_flags(size, NUMA_NO_NODE,
-				    GFP_KERNEL | __GFP_HIGHMEM | GFP_COLOR);
+				    GFP_KERNEL | __GFP_HIGHMEM | GFP_COLOR | GFP_CPU1);
 }
 EXPORT_SYMBOL(vmalloc_color);
 

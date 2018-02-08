@@ -30,7 +30,7 @@
 #include <media/v4l2-common.h>
 #include <media/videobuf2-core.h>
 
-#define ENABLE_WORST_CASE	1
+//#define ENABLE_WORST_CASE	1
 #ifdef ENABLE_WORST_CASE
 #define VB2_CORE_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
@@ -207,9 +207,9 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 	 */
 	for (plane = 0; plane < vb->num_planes; ++plane) {
 		unsigned long size = PAGE_ALIGN(q->plane_sizes[plane]);
-		printk(KERN_INFO "__vb2_buf_mem_alloc(): size %ld, func %pF GFP_COLOR? %d\n", size, vb->vb2_queue->mem_ops->alloc, q->gfp_flags&GFP_COLOR);
+		printk(KERN_INFO "__vb2_buf_mem_alloc(): size %ld, func %pF GFP_COLOR? %d\n", size, vb->vb2_queue->mem_ops->alloc, q->gfp_flags|VB2_CORE_FLAG);
 		mem_priv = call_ptr_memop(vb, alloc, q->alloc_ctx[plane],
-				      size, dma_dir, q->gfp_flags);
+				      size, dma_dir, q->gfp_flags|VB2_CORE_FLAG);
 		if (IS_ERR_OR_NULL(mem_priv))
 			goto free;
 
@@ -1783,8 +1783,10 @@ static int vb2_start_streaming(struct vb2_queue *q)
 
 	/* Tell the driver to start streaming */
 	q->start_streaming_called = 1;
+	printk(KERN_INFO "vb2_start_streaming(): %pF\n", q->ops->start_streaming);
 	ret = call_qop(q, start_streaming, q,
 		       atomic_read(&q->owned_by_drv_count));
+	printk(KERN_INFO "vb2_start_streaming() : ret1 = %d\n", ret);
 	if (!ret)
 		return 0;
 
@@ -1818,6 +1820,7 @@ static int vb2_start_streaming(struct vb2_queue *q)
 	 * STATE_DONE.
 	 */
 	WARN_ON(!list_empty(&q->done_list));
+	printk(KERN_INFO "vb2_start_streaming() : ret2 = %d\n", ret);
 	return ret;
 }
 

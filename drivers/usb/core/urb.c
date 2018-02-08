@@ -10,6 +10,12 @@
 
 #define to_urb(d) container_of(d, struct urb, kref)
 
+//#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define URB_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define URB_FLAG	(GFP_COLOR)
+#endif
 
 static void urb_destroy(struct kref *kref)
 {
@@ -67,7 +73,7 @@ struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags)
 
 	urb = kmalloc(sizeof(struct urb) +
 		iso_packets * sizeof(struct usb_iso_packet_descriptor),
-		mem_flags);
+		mem_flags|URB_FLAG);
 	if (!urb) {
 		printk(KERN_ERR "alloc_urb: kmalloc failed\n");
 		return NULL;
@@ -539,7 +545,7 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 		}
 	}
 
-	return usb_hcd_submit_urb(urb, mem_flags);
+	return usb_hcd_submit_urb(urb, mem_flags|URB_FLAG);
 }
 EXPORT_SYMBOL_GPL(usb_submit_urb);
 

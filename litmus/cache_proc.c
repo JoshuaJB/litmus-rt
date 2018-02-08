@@ -161,6 +161,9 @@ static int l2_data_prefetch_proc;
 static int os_isolation;
 static int use_part;
 
+static u32 debug_test_val;
+struct mutex debug_mutex;
+
 u32 lockdown_reg[9] = {
 	0x00000000,
 	0x00000000,
@@ -283,6 +286,7 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	mutex_init(&actlr_mutex);
 	mutex_init(&l2x0_prefetch_mutex);
 	mutex_init(&lockdown_proc);
+	mutex_init(&debug_mutex);
 	raw_spin_lock_init(&cache_lock);
 	raw_spin_lock_init(&prefetch_lock);
 	
@@ -676,6 +680,41 @@ int litmus_l2_data_prefetch_proc_handler(struct ctl_table *table, int write,
 	return ret;
 }
 
+extern void *msgvaddr;
+
+int do_measure(void) {
+	lt_t t1, t2;
+	int i;
+	
+	barrier();
+	t1 = litmus_clock();
+	color_read_in_mem_lock(0xFFFF7FFF, 0xFFFF8000, msgvaddr, msgvaddr + 65536);
+	t2 = litmus_clock() - t1;
+	barrier();
+	
+	for (i = 0; i < 8; i++) {
+		cache_lockdown(0xFFFF8000, i);
+	}
+	printk("mem read time %lld\n", t2);
+	
+	return 0;
+}
+
+int debug_test_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+	
+	//mutex_lock(&debug_mutex);
+	//ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (write) {
+		ret = do_measure();
+	}
+
+	return ret;
+}
+
+
 int do_perf_test_proc_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
 
@@ -870,6 +909,11 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(lockdown_reg[8]),
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
+	},
+	{
+		.procname	= "debug_test",
+		.mode		= 0644,
+		.proc_handler	= debug_test_handler,
 	},
 	{ }
 };
@@ -1201,12 +1245,13 @@ asmlinkage long sys_lock_buffer(void* vaddr, size_t size, u32 lock_way, u32 unlo
 
 static int perf_test(void) {
 	struct timespec before, after;
-	struct page *page;
-	void *vaddr;
-	u32 *data;
+	struct page *page, *page2;
+	void *vaddr, *vaddr2;
+	u32 *data, *data2;
 	long time, flush_time;
-	int i, num_pages = 1;
-	unsigned int order = 4;
+	int i, n, num_pages = 1;
+	unsigned int order = 2;
+	lt_t t1 = 0, t2 = 0;
 
 	for (i = 0; i < order; i++) {
 		num_pages = num_pages*2;
@@ -1220,11 +1265,35 @@ static int perf_test(void) {
 		return -ENOMEM;
 	}
 
+	page2 = alloc_pages(__GFP_MOVABLE, order);
+	if (!page2) {
+		printk(KERN_WARNING "No memory\n");
+		return -ENOMEM;
+	}
+	
 	vaddr = page_address(page);
 	if (!vaddr)
 		printk(KERN_WARNING "%s: vaddr is null\n", __FUNCTION__);
 	data = (u32*) vaddr;
 
+	vaddr2 = page_address(page2);
+	if (!vaddr2)
+		printk(KERN_WARNING "%s: vaddr2 is null\n", __FUNCTION__);
+	data2 = (u32*) vaddr2;
+
+	for (i = 32; i < 4096; i *= 2) {
+		for (n = 0; n < TRIALS; n++) {
+			invalidate_kernel_vmap_range(vaddr, 8192);
+			invalidate_kernel_vmap_range(vaddr2, 8192);
+			barrier();
+			t1 = litmus_clock();
+			memcpy(vaddr2, vaddr, i);
+			barrier();
+			t2 += litmus_clock() - t1;
+		}
+		printk("Size %d, average for memcpy %lld\n", i, t2>>9);
+	}
+/*	
 	getnstimeofday(&before);
 	barrier();
 	for (i = 0; i < TRIALS; i++) {
@@ -1277,9 +1346,10 @@ static int perf_test(void) {
 	time = update_timeval(before, after);
 	printk("Average for read in after write: %ld\n", time / TRIALS);
 	
-	
+*/	
 	//free_page((unsigned long)vaddr);
 	free_pages((unsigned long)vaddr, order);
+	free_pages((unsigned long)vaddr2, order);
 
 	return 0;
 }

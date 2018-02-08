@@ -260,7 +260,7 @@ static struct page *__dma_alloc_buffer(struct device *dev, size_t size, gfp_t gf
 	if (!page)
 		return NULL;
 	if (gfp&GFP_COLOR)
-		printk(KERN_INFO "__dma_alloc_buffer(): size %d, order %ld requested\n", size, order);
+		//printk(KERN_INFO "__dma_alloc_buffer(): size %d, order %ld requested\n", size, order);
 	/*
 	 * Now split the huge page and free the excess pages
 	 */

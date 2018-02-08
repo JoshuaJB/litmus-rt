@@ -18,6 +18,7 @@
 #include <linux/mm.h>
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h>
+#include <linux/mempool.h>
 
 #include <litmus/litmus.h>
 #include <litmus/bheap.h>
@@ -604,7 +605,7 @@ asmlinkage long sys_test_call(unsigned int param)
 				}
 				
 				TRACE_TASK(current, "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
-				printk(KERN_INFO "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
+				//printk(KERN_INFO "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
 				put_page(old_page);
 			}
 			vma_itr = vma_itr->vm_next;
@@ -623,6 +624,8 @@ asmlinkage long sys_test_call(unsigned int param)
 			}
 			rcu_read_unlock();
 		}
+	} else if (param == 2) {
+		flush_cache_all();
 	}
 	
 	return ret;
@@ -959,6 +962,35 @@ static struct notifier_block shutdown_notifier = {
 	.notifier_call = litmus_shutdown_nb,
 };
 
+extern mempool_t *msgpool;
+struct page *msgpages;
+void *msgvaddr;
+
+static int litmus_msgpool_init(void)
+{
+	int i;
+	lt_t t1, t2;
+	
+	msgpages = alloc_pages(GFP_KERNEL, 4);
+	if (!msgpages) {
+		printk(KERN_WARNING "No memory\n");
+		return -ENOMEM;
+	}
+	msgvaddr = page_address(msgpages);
+
+	printk(KERN_INFO "pfn %05lx addr %p\n", page_to_pfn(msgpages), msgvaddr);
+	
+	for (i = 0; i < 8; i++) {
+		cache_lockdown(0xFFFF8000, i);
+	}
+	t1 = litmus_clock();
+	color_read_in_mem_lock(0xFFFF7FFF, 0xFFFF8000, msgvaddr, msgvaddr + 65536);
+	t2 = litmus_clock() - t1;
+	printk(KERN_INFO "mem read time %lld\n", t2);
+	
+	return 0;
+}
+
 static int __init _init_litmus(void)
 {
 	/*      Common initializers,
@@ -993,7 +1025,9 @@ static int __init _init_litmus(void)
 	color_mask = ((cache_info_sets << line_size_log) - 1) ^ (PAGE_SIZE - 1);
 	printk("Page color mask %lx\n", color_mask);
 #endif
-
+	
+	litmus_msgpool_init();
+	
 	return 0;
 }
 

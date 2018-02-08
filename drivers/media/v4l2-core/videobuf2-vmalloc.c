@@ -21,14 +21,13 @@
 #include <media/videobuf2-vmalloc.h>
 #include <media/videobuf2-memops.h>
 
-
-#define ENABLE_WORST_CASE	1
+//#define ENABLE_WORST_CASE	1
 #ifdef ENABLE_WORST_CASE
 #define VB2_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
 #define VB2_FLAG	(GFP_COLOR)
 #endif
- 
+
 struct vb2_vmalloc_buf {
 	void				*vaddr;
 	struct page			**pages;

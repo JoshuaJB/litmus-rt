@@ -30,6 +30,13 @@ LIST_HEAD(slab_caches);
 DEFINE_MUTEX(slab_mutex);
 struct kmem_cache *kmem_cache;
 
+//#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define KMEM_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define KMEM_FLAG	(0)
+#endif
+
 /*
  * Set of flags that will prevent slab merging
  */
@@ -303,7 +310,7 @@ do_kmem_cache_create(const char *name, size_t object_size, size_t size,
 	int err;
 
 	err = -ENOMEM;
-	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
+	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL|KMEM_FLAG);
 	if (!s)
 		goto out;
 

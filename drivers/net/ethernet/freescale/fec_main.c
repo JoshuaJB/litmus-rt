@@ -65,7 +65,7 @@
 
 #include "fec.h"
 
-#define ENABLE_WORST_CASE	1
+//#define ENABLE_WORST_CASE	1
 #ifdef ENABLE_WORST_CASE
 #define FEC_FLAG	(GFP_COLOR|GFP_CPU1)
 #else

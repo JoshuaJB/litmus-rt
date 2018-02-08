@@ -548,6 +548,7 @@ out:
 	return ret;
 }
 
+/*
 static struct ctl_table cache_table[] =
 {
         
@@ -728,7 +729,8 @@ static struct ctl_table cache_table[] =
 	},	
 	{ }
 };
-
+*/
+/*
 static struct ctl_table litmus_dir_table[] = {
 	{
 		.procname	= "litmus",
@@ -737,9 +739,9 @@ static struct ctl_table litmus_dir_table[] = {
 	},
 	{ }
 };
+*/
 
-
-static struct ctl_table_header *litmus_sysctls;
+//static struct ctl_table_header *litmus_sysctls;
 
 
 /*
@@ -749,7 +751,7 @@ static int __init litmus_color_init(void)
 {
 	int err=0;
         printk("Init bankproc.c\n");
-
+/*
 	init_variables();
 
 	printk(KERN_INFO "Registering LITMUS^RT proc color sysctl.\n");
@@ -763,7 +765,7 @@ static int __init litmus_color_init(void)
 
 	init_color_groups();			
 	do_add_pages();
-
+*/
 	printk(KERN_INFO "Registering LITMUS^RT color and bank proc.\n");
 out:
 	return err;

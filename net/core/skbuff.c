@@ -77,7 +77,7 @@
 #include <linux/capability.h>
 #include <linux/user_namespace.h>
 
-#define ENABLE_WORST_CASE	1
+//#define ENABLE_WORST_CASE	1
 #ifdef ENABLE_WORST_CASE
 #define SKB_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
@@ -1255,11 +1255,11 @@ struct sk_buff *skb_realloc_headroom(struct sk_buff *skb, unsigned int headroom)
 	int delta = headroom - skb_headroom(skb);
 
 	if (delta <= 0)
-		skb2 = pskb_copy(skb, GFP_ATOMIC);
+		skb2 = pskb_copy(skb, GFP_ATOMIC | SKB_FLAG);
 	else {
-		skb2 = skb_clone(skb, GFP_ATOMIC);
+		skb2 = skb_clone(skb, GFP_ATOMIC | SKB_FLAG);
 		if (skb2 && pskb_expand_head(skb2, SKB_DATA_ALIGN(delta), 0,
-					     GFP_ATOMIC)) {
+					     GFP_ATOMIC | SKB_FLAG)) {
 			kfree_skb(skb2);
 			skb2 = NULL;
 		}
@@ -1481,7 +1481,7 @@ int ___pskb_trim(struct sk_buff *skb, unsigned int len)
 	int err;
 
 	if (skb_cloned(skb) &&
-	    unlikely((err = pskb_expand_head(skb, 0, 0, GFP_ATOMIC))))
+	    unlikely((err = pskb_expand_head(skb, 0, 0, GFP_ATOMIC|SKB_FLAG))))
 		return err;
 
 	i = 0;
@@ -1516,7 +1516,7 @@ drop_pages:
 		if (skb_shared(frag)) {
 			struct sk_buff *nfrag;
 
-			nfrag = skb_clone(frag, GFP_ATOMIC);
+			nfrag = skb_clone(frag, GFP_ATOMIC|SKB_FLAG);
 			if (unlikely(!nfrag))
 				return -ENOMEM;
 
@@ -1589,7 +1589,7 @@ unsigned char *__pskb_pull_tail(struct sk_buff *skb, int delta)
 
 	if (eat > 0 || skb_cloned(skb)) {
 		if (pskb_expand_head(skb, 0, eat > 0 ? eat + 128 : 0,
-				     GFP_ATOMIC))
+				     GFP_ATOMIC|SKB_FLAG))
 			return NULL;
 	}
 
@@ -1637,7 +1637,7 @@ unsigned char *__pskb_pull_tail(struct sk_buff *skb, int delta)
 
 				if (skb_shared(list)) {
 					/* Sucks! We need to fork list. :-( */
-					clone = skb_clone(list, GFP_ATOMIC);
+					clone = skb_clone(list, GFP_ATOMIC|SKB_FLAG);
 					if (!clone)
 						return NULL;
 					insp = list->next;
@@ -2313,7 +2313,7 @@ skb_zerocopy(struct sk_buff *to, struct sk_buff *from, int len, int hlen)
 	to->len += len + plen;
 	to->data_len += len + plen;
 
-	if (unlikely(skb_orphan_frags(from, GFP_ATOMIC))) {
+	if (unlikely(skb_orphan_frags(from, GFP_ATOMIC|SKB_FLAG))) {
 		skb_tx_error(from);
 		return -ENOMEM;
 	}
@@ -2607,7 +2607,7 @@ EXPORT_SYMBOL(skb_split);
  */
 static int skb_prepare_for_shift(struct sk_buff *skb)
 {
-	return skb_cloned(skb) && pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+	return skb_cloned(skb) && pskb_expand_head(skb, 0, 0, GFP_ATOMIC|SKB_FLAG);
 }
 
 /**
@@ -3073,7 +3073,7 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
 				frag++;
 			}
 
-			nskb = skb_clone(list_skb, GFP_ATOMIC);
+			nskb = skb_clone(list_skb, GFP_ATOMIC|SKB_FLAG);
 			list_skb = list_skb->next;
 
 			if (unlikely(!nskb))
@@ -3095,7 +3095,7 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
 			__skb_push(nskb, doffset);
 		} else {
 			nskb = __alloc_skb(hsize + doffset + headroom,
-					   GFP_ATOMIC, skb_alloc_rx_flag(head_skb),
+					   GFP_ATOMIC|SKB_FLAG, skb_alloc_rx_flag(head_skb),
 					   NUMA_NO_NODE);
 
 			if (unlikely(!nskb))
@@ -3163,7 +3163,7 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
 				goto err;
 			}
 
-			if (unlikely(skb_orphan_frags(frag_skb, GFP_ATOMIC)))
+			if (unlikely(skb_orphan_frags(frag_skb, GFP_ATOMIC|SKB_FLAG)))
 				goto err;
 
 			*nskb_frag = *frag;
@@ -3497,7 +3497,7 @@ int skb_cow_data(struct sk_buff *skb, int tailbits, struct sk_buff **trailer)
 		 * space, 128 bytes is fair. */
 
 		if (skb_tailroom(skb) < tailbits &&
-		    pskb_expand_head(skb, 0, tailbits-skb_tailroom(skb)+128, GFP_ATOMIC))
+		    pskb_expand_head(skb, 0, tailbits-skb_tailroom(skb)+128, GFP_ATOMIC|SKB_FLAG))
 			return -ENOMEM;
 
 		/* Voila! */
@@ -3539,12 +3539,12 @@ int skb_cow_data(struct sk_buff *skb, int tailbits, struct sk_buff **trailer)
 
 			/* Fuck, we are miserable poor guys... */
 			if (ntail == 0)
-				skb2 = skb_copy(skb1, GFP_ATOMIC);
+				skb2 = skb_copy(skb1, GFP_ATOMIC|SKB_FLAG);
 			else
 				skb2 = skb_copy_expand(skb1,
 						       skb_headroom(skb1),
 						       ntail,
-						       GFP_ATOMIC);
+						       GFP_ATOMIC|SKB_FLAG);
 			if (unlikely(skb2 == NULL))
 				return -ENOMEM;
 
@@ -3641,7 +3641,7 @@ struct sk_buff *skb_clone_sk(struct sk_buff *skb)
 	if (!sk || !atomic_inc_not_zero(&sk->sk_refcnt))
 		return NULL;
 
-	clone = skb_clone(skb, GFP_ATOMIC);
+	clone = skb_clone(skb, GFP_ATOMIC|SKB_FLAG);
 	if (!clone) {
 		sock_put(sk);
 		return NULL;
@@ -3725,9 +3725,9 @@ void __skb_tstamp_tx(struct sk_buff *orig_skb,
 		return;
 
 	if (tsonly)
-		skb = alloc_skb(0, GFP_ATOMIC);
+		skb = alloc_skb(0, GFP_ATOMIC|SKB_FLAG);
 	else
-		skb = skb_clone(orig_skb, GFP_ATOMIC);
+		skb = skb_clone(orig_skb, GFP_ATOMIC|SKB_FLAG);
 	if (!skb)
 		return;
 
@@ -4222,7 +4222,7 @@ struct sk_buff *skb_vlan_untag(struct sk_buff *skb)
 		return skb;
 	}
 
-	skb = skb_share_check(skb, GFP_ATOMIC);
+	skb = skb_share_check(skb, GFP_ATOMIC|SKB_FLAG);
 	if (unlikely(!skb))
 		goto err_free;
 
@@ -4260,7 +4260,7 @@ int skb_ensure_writable(struct sk_buff *skb, int write_len)
 	if (!skb_cloned(skb) || skb_clone_writable(skb, write_len))
 		return 0;
 
-	return pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+	return pskb_expand_head(skb, 0, 0, GFP_ATOMIC|SKB_FLAG);
 }
 EXPORT_SYMBOL(skb_ensure_writable);
 

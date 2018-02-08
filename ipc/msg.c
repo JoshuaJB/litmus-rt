@@ -38,6 +38,10 @@
 #include <linux/nsproxy.h>
 #include <linux/ipc_namespace.h>
 
+#include <litmus/trace.h>
+#include <litmus/litmus.h>
+#include <asm/cacheflush.h>
+
 #include <asm/current.h>
 #include <linux/uaccess.h>
 #include "util.h"
@@ -619,7 +623,7 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 	if (mtype < 1)
 		return -EINVAL;
 
-	msg = load_msg(mtext, msgsz);
+	msg = load_msg(mtext, msgsz, mtype);
 	if (IS_ERR(msg))
 		return PTR_ERR(msg);
 
@@ -752,13 +756,13 @@ static long do_msg_fill(void __user *dest, struct msg_msg *msg, size_t bufsz)
 {
 	struct msgbuf __user *msgp = dest;
 	size_t msgsz;
-
 	if (put_user(msg->m_type, &msgp->mtype))
 		return -EFAULT;
-
 	msgsz = (bufsz > msg->m_ts) ? msg->m_ts : bufsz;
+
 	if (store_msg(msgp->mtext, msg, msgsz))
 		return -EFAULT;
+
 	return msgsz;
 }
 
@@ -976,10 +980,10 @@ out_unlock1:
 		free_copy(copy);
 		return PTR_ERR(msg);
 	}
-
+TS_NET_RX_HARDIRQ_START;
 	bufsz = msg_handler(buf, msg, bufsz);
 	free_msg(msg);
-
+TS_NET_RX_HARDIRQ_END;
 	return bufsz;
 }
 

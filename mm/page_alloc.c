@@ -1299,7 +1299,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 			}
 			
 			set_freepage_migratetype(page, migratetype);
-			//printk(KERN_INFO "__rmqueue_smallest(): CPU%d COLOR %d BANK %d page return %p pfn:%05lx\n", cpu, page_color(page), page_bank(page), page, page_to_pfn(page));
+			//printk(KERN_INFO "__rmqueue_smallest(): CPU%d COLOR %d BANK %d page order %d return %p pfn:%05lx\n", cpu, page_color(page), page_bank(page), order, page, page_to_pfn(page));
 			return page;
 		}
 	} else {
@@ -1630,7 +1630,7 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 			trace_mm_page_alloc_extfrag(page, order, current_order,
 				start_migratetype, fallback_mt);
 		
-			//printk(KERN_INFO "__rmqueue_fallback(): CPU%d COLOR %d BANK %d page return %p pfn:%05lx\n", cpu, page_color(page), page_bank(page), page, page_to_pfn(page));
+			//printk(KERN_INFO "P%d __rmqueue_fallback(): cpu%d's bank COLOR %d BANK %d page order %d return %p pfn:%05lx\n", cpu, area_index, page_color(page), page_bank(page), order, page, page_to_pfn(page));
 			return page;
 		}
 	} else {

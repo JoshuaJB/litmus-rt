@@ -12,6 +12,8 @@ struct msg_msg {
 	struct msg_msgseg *next;
 	void *security;
 	/* the actual message follows immediately */
+	dma_addr_t	handle;
+	size_t alloc_len;
 };
 
 /* one msq_queue structure for each present queue on the system */

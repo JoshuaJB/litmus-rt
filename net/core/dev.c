@@ -138,6 +138,13 @@
 
 #include "net-sysfs.h"
 
+//#define ENABLE_WORST_CASE	1
+#ifdef ENABLE_WORST_CASE
+#define DEV_FLAG	(GFP_COLOR|GFP_CPU1)
+#else
+#define DEV_FLAG	(0)
+#endif	
+
 /* Instead of increasing this, you should create a hash table. */
 #define MAX_GRO_SKBS 8
 
@@ -1718,7 +1725,7 @@ EXPORT_SYMBOL_GPL(is_skb_forwardable);
 
 int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb)
 {
-	if (skb_orphan_frags(skb, GFP_ATOMIC) ||
+	if (skb_orphan_frags(skb, GFP_ATOMIC|DEV_FLAG) ||
 	    unlikely(!is_skb_forwardable(dev, skb))) {
 		atomic_long_inc(&dev->rx_dropped);
 		kfree_skb(skb);
@@ -1762,7 +1769,7 @@ static inline int deliver_skb(struct sk_buff *skb,
 			      struct packet_type *pt_prev,
 			      struct net_device *orig_dev)
 {
-	if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
+	if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC|DEV_FLAG)))
 		return -ENOMEM;
 	atomic_inc(&skb->users);
 	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
@@ -1827,7 +1834,7 @@ again:
 		}
 
 		/* need to clone skb, done only once */
-		skb2 = skb_clone(skb, GFP_ATOMIC);
+		skb2 = skb_clone(skb, GFP_ATOMIC|DEV_FLAG);
 		if (!skb2)
 			goto out_unlock;
 
@@ -1986,7 +1993,7 @@ static struct xps_map *expand_xps_map(struct xps_map *map,
 	}
 
 	/* Need to allocate new map to store queue on this CPU's map */
-	new_map = kzalloc_node(XPS_MAP_SIZE(alloc_len), GFP_KERNEL,
+	new_map = kzalloc_node(XPS_MAP_SIZE(alloc_len), GFP_KERNEL|DEV_FLAG,
 			       cpu_to_node(cpu));
 	if (!new_map)
 		return NULL;
@@ -2018,7 +2025,7 @@ int netif_set_xps_queue(struct net_device *dev, const struct cpumask *mask,
 			continue;
 
 		if (!new_dev_maps)
-			new_dev_maps = kzalloc(maps_sz, GFP_KERNEL);
+			new_dev_maps = kzalloc(maps_sz, GFP_KERNEL|DEV_FLAG);
 		if (!new_dev_maps) {
 			mutex_unlock(&xps_map_mutex);
 			return -ENOMEM;
@@ -2398,7 +2405,7 @@ int skb_checksum_help(struct sk_buff *skb)
 
 	if (skb_cloned(skb) &&
 	    !skb_clone_writable(skb, offset + sizeof(__sum16))) {
-		ret = pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+		ret = pskb_expand_head(skb, 0, 0, GFP_ATOMIC|DEV_FLAG);
 		if (ret)
 			goto out;
 	}
@@ -3777,7 +3784,7 @@ ncls:
 	}
 
 	if (pt_prev) {
-		if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
+		if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC|DEV_FLAG)))
 			goto drop;
 		else
 			ret = pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
@@ -6259,7 +6266,7 @@ static int netif_alloc_rx_queues(struct net_device *dev)
 
 	BUG_ON(count < 1);
 
-	rx = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	rx = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT | DEV_FLAG);
 	if (!rx) {
 		rx = vzalloc(sz);
 		if (!rx)
@@ -6300,7 +6307,7 @@ static int netif_alloc_netdev_queues(struct net_device *dev)
 
 	BUG_ON(count < 1 || count > 0xffff);
 
-	tx = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	tx = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT | DEV_FLAG);
 	if (!tx) {
 		tx = vzalloc(sz);
 		if (!tx)
@@ -6735,7 +6742,7 @@ struct netdev_queue *dev_ingress_queue_create(struct net_device *dev)
 #ifdef CONFIG_NET_CLS_ACT
 	if (queue)
 		return queue;
-	queue = kzalloc(sizeof(*queue), GFP_KERNEL);
+	queue = kzalloc(sizeof(*queue), GFP_KERNEL|DEV_FLAG);
 	if (!queue)
 		return NULL;
 	netdev_init_one_queue(dev, queue, NULL);
@@ -6808,7 +6815,7 @@ struct net_device *alloc_netdev_mqs(int sizeof_priv, const char *name,
 	/* ensure 32-byte alignment of whole construct */
 	alloc_size += NETDEV_ALIGN - 1;
 
-	p = kzalloc(alloc_size, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	p = kzalloc(alloc_size, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT | DEV_FLAG);
 	if (!p)
 		p = vzalloc(alloc_size);
 	if (!p)

@@ -18,6 +18,12 @@
 #include <linux/utsname.h>
 #include <linux/proc_ns.h>
 #include <linux/uaccess.h>
+#include <linux/dma-mapping.h>
+#include <linux/mempool.h>
+#include <litmus/cache_proc.h>
+#include <litmus/trace.h>
+#include <litmus/litmus.h>
+#include <asm/cacheflush.h>
 
 #include "util.h"
 
@@ -42,20 +48,37 @@ atomic_t nr_ipc_ns = ATOMIC_INIT(1);
 struct msg_msgseg {
 	struct msg_msgseg *next;
 	/* the next part of the message follows immediately */
+	dma_addr_t	seg_handle;
+	size_t seg_len;
 };
 
 #define DATALEN_MSG	((size_t)PAGE_SIZE-sizeof(struct msg_msg))
 #define DATALEN_SEG	((size_t)PAGE_SIZE-sizeof(struct msg_msgseg))
 
+static dma_addr_t handle;
 
-static struct msg_msg *alloc_msg(size_t len)
+mempool_t *msgpool;
+extern void *msgvaddr;
+
+static struct msg_msg *alloc_msg(size_t len, long mtype)
 {
 	struct msg_msg *msg;
 	struct msg_msgseg **pseg;
 	size_t alen;
+	int n_seg = 0;
 
 	alen = min(len, DATALEN_MSG);
-	msg = kmalloc(sizeof(*msg) + alen, GFP_KERNEL);
+	if (mtype == 1) {
+		//printk(KERN_INFO "SBP message\n");
+		msg = dma_alloc_coherent(NULL, sizeof(*msg) + alen, &handle, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
+		msg->handle = handle;
+		msg->alloc_len = sizeof(*msg) + alen;
+	} else if (mtype == 2) {
+		msg = kmalloc(sizeof(*msg) + alen, GFP_KERNEL|GFP_COLOR);
+	} else {
+		//msg = kmalloc(sizeof(*msg) + alen, GFP_KERNEL);
+		msg = msgvaddr;
+	}
 	if (msg == NULL)
 		return NULL;
 
@@ -67,7 +90,18 @@ static struct msg_msg *alloc_msg(size_t len)
 	while (len > 0) {
 		struct msg_msgseg *seg;
 		alen = min(len, DATALEN_SEG);
-		seg = kmalloc(sizeof(*seg) + alen, GFP_KERNEL);
+		if (mtype == 1) {
+			seg = dma_alloc_coherent(NULL, sizeof(*seg) + alen, &handle, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
+			seg->seg_handle = handle;
+			seg->seg_len = alen;
+			//printk(KERN_INFO "SBP message seg %d\n", seg->seg_len);
+		} else if (mtype == 2) {
+			seg = kmalloc(sizeof(*seg) + alen, GFP_KERNEL|GFP_COLOR);
+		} else {
+			//seg = kmalloc(sizeof(*seg) + alen, GFP_KERNEL);
+			n_seg++;
+			seg = msgvaddr + PAGE_SIZE*n_seg;
+		}
 		if (seg == NULL)
 			goto out_err;
 		*pseg = seg;
@@ -83,18 +117,20 @@ out_err:
 	return NULL;
 }
 
-struct msg_msg *load_msg(const void __user *src, size_t len)
+struct msg_msg *load_msg(const void __user *src, size_t len, long mtype)
 {
 	struct msg_msg *msg;
 	struct msg_msgseg *seg;
 	int err = -EFAULT;
 	size_t alen;
 
-	msg = alloc_msg(len);
+TS_NET_RX_SOFTIRQ_START;	
+	msg = alloc_msg(len, mtype);
 	if (msg == NULL)
 		return ERR_PTR(-ENOMEM);
 
 	alen = min(len, DATALEN_MSG);
+
 	if (copy_from_user(msg + 1, src, alen))
 		goto out_err;
 
@@ -105,7 +141,11 @@ struct msg_msg *load_msg(const void __user *src, size_t len)
 		if (copy_from_user(seg + 1, src, alen))
 			goto out_err;
 	}
-
+TS_NET_RX_SOFTIRQ_END;
+/*	if (mtype == 3) {
+		cache_lockdown(0xFFFF8000, smp_processor_id());
+	}
+*/
 	err = security_msg_msg_alloc(msg);
 	if (err)
 		goto out_err;
@@ -172,14 +212,24 @@ int store_msg(void __user *dest, struct msg_msg *msg, size_t len)
 void free_msg(struct msg_msg *msg)
 {
 	struct msg_msgseg *seg;
-
+	long mtype = msg->m_type;
+	
 	security_msg_msg_free(msg);
 
 	seg = msg->next;
-	kfree(msg);
+	if (mtype == 1) {
+		//printk(KERN_INFO "free_msg(): SBP message\n");
+		dma_free_coherent(NULL, msg->alloc_len, msg, msg->handle);
+	} else if (mtype != 3) {
+		kfree(msg);
+	}
 	while (seg != NULL) {
 		struct msg_msgseg *tmp = seg->next;
-		kfree(seg);
+		if (mtype == 1) {
+			//printk(KERN_INFO "free_msg(): SBP message seg %d\n", seg->seg_len);
+			dma_free_coherent(NULL, sizeof(*seg)+(seg->seg_len), seg, seg->seg_handle);
+		} else if (mtype != 3)
+			kfree(seg);
 		seg = tmp;
 	}
 }
