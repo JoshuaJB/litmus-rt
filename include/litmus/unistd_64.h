@@ -44,7 +44,8 @@ __SYSCALL(__NR_test_call, sys_test_call)
 #define __NR_run_test				__LSC(18)
 __SYSCALL(__NR_run_test, sys_run_test)
 #define __NR_lock_buffer			__LSC(19)
-__SYACALL(__NR_lock_buffer, sys_lock_buffer)
+__SYSCALL(__NR_lock_buffer, sys_lock_buffer)
+#define __NR_recolor_mem			__LSC(20)
+__SYSCALL(__NR_recolor_mem, sys_recolor_mem)
 
-
-#define NR_litmus_syscalls 20
+#define NR_litmus_syscalls 21

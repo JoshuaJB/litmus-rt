@@ -417,6 +417,7 @@
 /* 405 */	CALL(sys_test_call)
 		CALL(sys_run_test)
 		CALL(sys_lock_buffer)
+		CALL(sys_recolor_mem)
 
 #ifndef syscalls_counted
 .equ syscalls_padding, ((NR_syscalls + 3) & ~3) - NR_syscalls

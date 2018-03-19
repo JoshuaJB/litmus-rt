@@ -25,5 +25,6 @@
 #define __NR_test_call		__LSC(17)
 #define __NR_run_test		__LSC(18)
 #define __NR_lock_buffer	__LSC(19)
+#define __NR_recolor_mem	__LSC(20)
 
-#define NR_litmus_syscalls	20
+#define NR_litmus_syscalls	21

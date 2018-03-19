@@ -385,3 +385,4 @@
 376	i386	test_call		sys_test_call
 377	i386	run_test		sys_run_test
 378	i386	lock_buffer		sys_lock_buffer
+379	i386	recolor_mem		sys_recolor_mem
