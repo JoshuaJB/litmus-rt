@@ -419,12 +419,12 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
  */
 static __always_inline void *kmalloc(size_t size, gfp_t flags)
 {
-	
+
 #ifdef CONFIG_SCHED_DEBUG_TRACE
 	if (flags&GFP_COLOR)
 		printk(KERN_INFO "kmalloc() is called with GFP_COLOR\n");
 #endif
-	
+
 	if (__builtin_constant_p(size)) {
 		if (size > KMALLOC_MAX_CACHE_SIZE)
 			return kmalloc_large(size, flags);

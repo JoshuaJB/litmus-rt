@@ -5,7 +5,7 @@
 #include <litmus/reservation.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
-	
+
 void reservation_init(struct reservation *res)
 {
 	memset(res, sizeof(*res), 0);
@@ -201,7 +201,7 @@ static void sup_charge_budget(
 				TRACE("DRAIN !!\n");
 				res->ops->drain_budget(res, delta);
 				encountered_active = 1;
-			}			
+			}
 		} else {
 			//BUG_ON(res->state != RESERVATION_ACTIVE_IDLE);
 			TRACE("sup_charge_budget INACTIVE R%u drain %llu\n", res->id, delta);
@@ -392,16 +392,16 @@ static void gmp_add_event(
 	//when *= TIMER_RESOLUTION;
 //printk(KERN_ALERT "GMP_ADD id=%d type=%d when=%llu\n", id, type, when);
 	nevent = gmp_find_event_by_id(gmp_env, id);
-	
+
 	if (nevent)
 		TRACE("EVENT R%d update prev = %llu, new = %llu\n", nevent->id, nevent->next_update, when);
-	
+
 	if (nevent && nevent->next_update > when) {
 		list_del(&nevent->list);
 		update = 1;
-		
+
 	}
-	
+
 	if (!nevent || nevent->type != type || update == 1) {
 		if (update == 0)
 			nevent = kzalloc(sizeof(*nevent), GFP_ATOMIC);
@@ -420,7 +420,7 @@ static void gmp_add_event(
 				break;
 			}
 		}
-		
+
 		if (!found) {
 			list_add_tail(&nevent->list, &gmp_env->next_events);
 			TRACE("NEXT_EVENT id=%d type=%d update=%llu ADDED at TAIL\n", nevent->id, nevent->type, nevent->next_update);
@@ -429,7 +429,7 @@ static void gmp_add_event(
 		//TRACE("EVENT FOUND id = %d type=%d when=%llu, NEW EVENT type=%d when=%llu\n", nevent->id, nevent->type, nevent->next_update, type, when);
 ; //printk(KERN_ALERT "EVENT FOUND id = %d type=%d when=%llu, NEW EVENT type=%d when=%llu\n", nevent->id, nevent->type, nevent->next_update, type, when);
 	}
-	
+
 	TRACE("======START PRINTING EVENT LIST======\n");
 	gmp_print_events(gmp_env, litmus_clock());
 	TRACE("======FINISH PRINTING EVENT LIST======\n");
@@ -451,7 +451,7 @@ static void gmp_queue_depleted(
 	int found = 0;
 
 //printk(KERN_ALERT "R%d request to enqueue depleted_list\n", res->id);
-	
+
 	list_for_each(pos, &gmp_env->depleted_reservations) {
 		queued = list_entry(pos, struct reservation, list);
 		if (queued && (queued->next_replenishment > res->next_replenishment)) {
@@ -495,10 +495,10 @@ static void gmp_queue_active(
 	if (res->state == RESERVATION_ACTIVE && check_preempt)
 		gmp_env->schedule_now++;
 
-#if BUDGET_ENFORCEMENT_AT_C	
+#if BUDGET_ENFORCEMENT_AT_C
 	gmp_add_event_after(gmp_env, res->cur_budget, res->id, EVENT_DRAIN);
 #endif
-	res->event_added = 1;	
+	res->event_added = 1;
 }
 
 static void gmp_queue_reservation(
@@ -639,7 +639,7 @@ int gmp_update_time(
 	//TRACE("REPLENISH###\n");
 	gmp_replenish_budgets(gmp_env);
 
-	
+
 	list_for_each_entry_safe(event, next, &gmp_env->next_events, list) {
 		if (event->next_update < now) {
 			list_del(&event->list);
@@ -648,10 +648,10 @@ int gmp_update_time(
 		} else {
 			break;
 		}
-	}		
-	
+	}
+
 	//gmp_print_events(gmp_env, litmus_clock());
-	
+
 	ret = min(gmp_env->schedule_now, NR_CPUS);
 	gmp_env->schedule_now = 0;
 
@@ -665,7 +665,7 @@ void gmp_print_events(struct gmp_reservation_environment* gmp_env, lt_t now)
 	TRACE("GLOBAL EVENTS now=%llu\n", now);
 	list_for_each_entry_safe(event, next, &gmp_env->next_events, list) {
 		TRACE("at %llu type=%d id=%d armed_on=%d\n", event->next_update, event->type, event->id, event->timer_armed_on);
-	}		
+	}
 }
 
 static void gmp_res_change_state(
@@ -701,6 +701,6 @@ void gmp_init(struct gmp_reservation_environment* gmp_env)
 
 	gmp_env->schedule_now = 0;
 	gmp_env->will_schedule = false;
-	
+
 	raw_spin_lock_init(&gmp_env->lock);
 }

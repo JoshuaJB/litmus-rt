@@ -259,8 +259,6 @@ static struct page *__dma_alloc_buffer(struct device *dev, size_t size, gfp_t gf
 	page = alloc_pages(gfp, order);
 	if (!page)
 		return NULL;
-	if (gfp&GFP_COLOR)
-		//printk(KERN_INFO "__dma_alloc_buffer(): size %d, order %ld requested\n", size, order);
 	/*
 	 * Now split the huge page and free the excess pages
 	 */
@@ -342,19 +340,19 @@ void __init init_dma_coherent_pool_size(unsigned long size)
 		atomic_pool_size = size;
 }
 
-#define BANK_MASK  0x38000000     
+#define BANK_MASK  0x38000000
 #define BANK_SHIFT  27
 
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -673,17 +671,15 @@ static void *__dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 		}
 	}
 #endif
-	
+
 	if (is_coherent || nommu())
 		addr = __alloc_simple_buffer(dev, size, gfp, &page);
 	else if (!(gfp & __GFP_WAIT))
 		addr = __alloc_from_pool(size, &page);
-	else if (!dev_get_cma_area(dev)) {
+	else if (!dev_get_cma_area(dev))
 		addr = __alloc_remap_buffer(dev, size, gfp, prot, &page, caller, want_vaddr);
-		//printk(KERN_INFO "__alloc_remap_buffer returned %p page, size %d, color %d, bank %d, pfn %05lx\n", page, size, page_color(page), page_bank(page), page_to_pfn(page));
-	} else {
+	else
 		addr = __alloc_from_contiguous(dev, size, prot, &page, caller, want_vaddr);
-	}
 
 	if (page)
 		*handle = pfn_to_dma(dev, page_to_pfn(page));
@@ -701,17 +697,6 @@ void *arm_dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	void *memory;
 
-	/*
-	if ((gfp&GFP_COLOR) && (size > PAGE_SIZE*4)) {
-#ifdef CONFIG_SCHED_DEBUG_TRACE
-		printk(KERN_INFO "arm_dma_alloc(): original prot %08x\n", prot);
-#endif
-		//prot = pgprot_noncached(prot);
-#ifdef CONFIG_SCHED_DEBUG_TRACE
-		printk(KERN_INFO "arm_dma_alloc(): set as uncacheable prot %08x\n", prot);
-#endif
-	}
-	*/
 	if (dma_alloc_from_coherent(dev, size, handle, &memory))
 		return memory;
 

@@ -32,12 +32,12 @@ static int __init litmus_replicate_lib_init(void)
 	int cpu, ret = 0;
 
 	printk(KERN_INFO "Registering LITMUS^RT Per-core Shared Library module.\n");
-	
+
 	for_each_online_cpu(cpu) {
 		INIT_LIST_HEAD(shared_lib_pages_for(cpu));
 		printk(KERN_INFO "CPU%d PSL-list initialized.\n", cpu);
 	}
-	
+
 	return ret;
 }
 

@@ -20,8 +20,8 @@ static void update_time_litmus(struct rq *rq, struct task_struct *p)
 	/* task counter */
 	p->se.sum_exec_runtime += delta;
 	if (delta) {
-		//TRACE_TASK(p, "charged %llu exec time (total:%llu, rem:%llu)\n",
-			//delta, p->rt_param.job_params.exec_time, budget_remaining(p));
+		TRACE_TASK(p, "charged %llu exec time (total:%llu, rem:%llu)\n",
+			delta, p->rt_param.job_params.exec_time, budget_remaining(p));
 		;
 	}
 	/* sched_clock() */

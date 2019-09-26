@@ -1,20 +1,20 @@
 /*
- * page_dev.c - Implementation of the page coloring for cache and bank partition. 
- *              The file will keep a pool of colored pages. MMU can allocate pages with 
+ * page_dev.c - Implementation of the page coloring for cache and bank partition.
+ *              The file will keep a pool of colored pages. MMU can allocate pages with
  *		        specific color or bank number.
  * Author: Namhoon Kim (namhoonk@cs.unc.edu)
  */
- 
+
 #include <litmus/page_dev.h>
 #include <litmus/debug_trace.h>
 
 // This Address Decoding is used in imx6-sabredsd platform
 #define NUM_BANKS	8
-#define BANK_MASK	0x38000000     
+#define BANK_MASK	0x38000000
 #define BANK_SHIFT  27
 
 #define NUM_COLORS	16
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 
 #define NR_LLC_PARTITIONS		9
@@ -45,13 +45,13 @@ unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
 	0x0000000f,
 };
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -61,26 +61,26 @@ int bank_to_partition(unsigned int bank)
 {
 	int i;
 	unsigned int bank_bit = 0x1<<bank;
-	
+
 	for (i = 0; i<NR_DRAM_PARTITIONS; i++) {
 		if (dram_partition[i] & bank_bit)
 			return i;
 	}
-	
+
 	return -EINVAL;
 }
 
 int get_area_index(int cpu)
 {
 	int index = 0x10, area_index = 0;
-	
+
 	while (index < 0x100) {
 		if (dram_partition[cpu]&index)
 			break;
 		index = index << 1;
 		area_index++;
 	}
-	
+
 	return area_index;
 }
 
@@ -89,10 +89,10 @@ int is_in_correct_bank(struct page* page, int cpu)
 {
 	int bank;
 	unsigned int page_bank_bit;
-	
+
 	bank = page_bank(page);
 	page_bank_bit = 1 << bank;
-	
+
 	if (cpu == -1 || cpu == NR_CPUS)
 		return (page_bank_bit & dram_partition[NR_CPUS]);
 	else
@@ -103,17 +103,17 @@ int is_in_llc_partition(struct page* page, int cpu)
 {
 	int color;
 	unsigned int page_color_bit;
-	
+
 	color = page_color(page);
 	page_color_bit = 1 << color;
-	
+
 	if (cpu == -1 || cpu == NR_CPUS)
 		return (page_color_bit & llc_partition[8]);
 	else
 		return (page_color_bit & (llc_partition[cpu*2] | llc_partition[cpu*2+1]));
 }
 
-/* Bounds for values */ 
+/* Bounds for values */
 unsigned int llc_partition_max = 0x0000ffff;
 unsigned int llc_partition_min = 0;
 unsigned int dram_partition_max = 0x000000ff;
@@ -129,30 +129,30 @@ int slabtest_handler(struct ctl_table *table, int write, void __user *buffer, si
 	int** testbuffer;
 	mutex_lock(&dev_mutex);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
-	
+
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		int idx;
 		int n_data = buf_size/sizeof(int);
-		
+
 		printk(KERN_INFO "-------SLABTEST on CPU%d with %d buffer size\n", raw_smp_processor_id(), buf_size);
-		
+
 		testbuffer = kmalloc(sizeof(int*)*buf_num, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
-		
+
 		for (idx=0; idx<buf_num; idx++)
 		{
 			printk(KERN_INFO "kmalloc size %d, n_data %d\n", buf_size, n_data);
 			testbuffer[idx] = kmalloc(buf_size, GFP_KERNEL|GFP_COLOR|GFP_CPU1);
-			
+
 			if (!testbuffer[idx]) {
 				printk(KERN_ERR "kmalloc failed size = %d\n", buf_size);
 				goto out;
 			}
 		}
-		
-		
+
+
 		/* do test */
 		for (idx=0; idx<buf_num; idx++)
 		{
@@ -171,7 +171,7 @@ int slabtest_handler(struct ctl_table *table, int write, void __user *buffer, si
 
 		for (idx=0; idx<buf_num; idx++)
 			kfree(testbuffer[idx]);
-		
+
 		kfree(testbuffer);
 		printk(KERN_INFO "-------SLABTEST FINISHED on CPU%d\n", raw_smp_processor_id());
 	}
@@ -185,10 +185,10 @@ int num_buffer_handler(struct ctl_table *table, int write, void __user *buffer, 
 	int ret = 0;
 	mutex_lock(&dev_mutex);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
-	
+
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		printk(KERN_INFO "buf_num = %d\n", buf_num);
 	}
@@ -199,7 +199,7 @@ out:
 
 static struct ctl_table partition_table[] =
 {
-        
+
 	{
 		.procname	= "C0_LA_color",
 		.mode		= 0666,
@@ -208,7 +208,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[0]),
 		.extra1		= &llc_partition_min,
 		.extra2		= &llc_partition_max,
-	},	
+	},
 	{
 		.procname	= "C0_LB_color",
 		.mode		= 0666,
@@ -217,7 +217,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[1]),
 		.extra1		= &llc_partition_min,
 		.extra2		= &llc_partition_max,
-	},	
+	},
 	{
 		.procname	= "C1_LA_color",
 		.mode		= 0666,
@@ -271,7 +271,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[7]),
 		.extra1		= &llc_partition_min,
 		.extra2		= &llc_partition_max,
-	},	
+	},
 	{
 		.procname	= "Call_LC_color",
 		.mode		= 0666,
@@ -280,7 +280,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[8]),
 		.extra1		= &llc_partition_min,
 		.extra2		= &llc_partition_max,
-	},	
+	},
 	{
 		.procname	= "C0_dram",
 		.mode		= 0666,
@@ -307,7 +307,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[2]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},	
+	},
 	{
 		.procname	= "C3_dram",
 		.mode		= 0666,
@@ -316,7 +316,7 @@ static struct ctl_table partition_table[] =
 		.maxlen		= sizeof(llc_partition[3]),
 		.extra1		= &dram_partition_min,
 		.extra2		= &dram_partition_max,
-	},	
+	},
 	{
 		.procname	= "CS_dram",
 		.mode		= 0666,
@@ -346,7 +346,7 @@ static struct ctl_table partition_table[] =
 static struct ctl_table litmus_dir_table[] = {
 	{
 		.procname	= "litmus",
- 		.mode		= 0555,
+		.mode		= 0555,
 		.child		= partition_table,
 	},
 	{ }
@@ -395,7 +395,7 @@ out:
 static int __init init_litmus_page_dev(void)
 {
 	int err = 0;
-	
+
 	printk("Initialize page_dev.c\n");
 
 	mutex_init(&dev_mutex);

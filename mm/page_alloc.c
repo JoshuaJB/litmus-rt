@@ -72,20 +72,20 @@
 #include "internal.h"
 
 // This Address Decoding is used in imx6-sabredsd platform
-#define BANK_MASK  0x38000000     
+#define BANK_MASK  0x38000000
 #define BANK_SHIFT  27
 
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 #define MAX_COLOR_NODE	128
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -604,13 +604,10 @@ static inline void __free_one_page(struct page *page,
 	unsigned long uninitialized_var(buddy_idx);
 	struct page *buddy;
 	int max_order, parti_no;
-	
+
 	parti_no = bank_to_partition(page_bank(page));
 	BUG_ON(parti_no < 0 || parti_no > NR_CPUS);
-	
-	//if (parti_no < NR_CPUS)
-		//printk(KERN_ALERT "pfn = %lx, part_no = %d order = %d\n", pfn, parti_no, order);
-	
+
 	if (parti_no < NR_CPUS) {
 		max_order = MAX_PARTITIONED_ORDER;
 
@@ -750,7 +747,7 @@ static inline void __free_one_page(struct page *page,
 		list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
 out:
 		zone->free_area[order].nr_free++;
-	}	
+	}
 }
 
 static inline int free_pages_check(struct page *page)
@@ -1055,19 +1052,19 @@ static inline int expand_middle(struct zone *zone, struct page *page,
 	list_add(&page[0].lru, &area->free_list[migratetype]);
 	area->nr_free++;
 	set_page_order(&page[0], high);
-	
+
 	if (offset == size) {
 		//printk(KERN_INFO "offset == size %d high = %d\n", offset, high);
 		return high;
 	}
-	
+
 	area--;
 	high--;
 	VM_BUG_ON_PAGE(bad_range(zone, &page[size]), &page[size]);
 	list_add(&page[size].lru, &area->free_list[migratetype]);
 	area->nr_free++;
 	set_page_order(&page[size], high);
-	
+
 	return high;
 }
 
@@ -1144,17 +1141,17 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 static void build_colored_pages(struct zone *zone, struct page *page, int order)
 {
 	int i, color, bank;
-	
+
 	list_del(&page->lru);
 	zone->free_area[order].nr_free--;
-	
+
 	/* insert pages to zone->color_list[] */
 	for (i = 0; i < (1<<order); i++) {
 		int node;
 		color = page_color(&page[i]);
 		bank = page_bank(&page[i]);
 		node = bank*MAX_NUM_COLOR+color;
-		
+
 		INIT_LIST_HEAD(&page[i].lru);
 		list_add_tail(&page[i].lru, &zone->color_list[node]);
 		bitmap_set(zone->color_map, node, 1);
@@ -1182,29 +1179,29 @@ static inline struct page *get_colored_page(struct zone *zone, unsigned long req
 	unsigned int color, bank, index;
 	int i;
 	DECLARE_BITMAP(candidate_bit, MAX_COLOR_NODE);
-	
+
 	/* if req_color_map does not exist in zone, return NULL */
 	if (!bitmap_intersects(zone->color_map, req_color_map, MAX_COLOR_NODE))
 		return NULL;
-	
+
 	bitmap_and(candidate_bit, zone->color_map, req_color_map, MAX_COLOR_NODE);
 	index = color_seq_index[partition];
-	
+
 	for_each_set_bit(i, candidate_bit, MAX_COLOR_NODE) {
 		if (index-- <= 0)
 			break;
 	}
-	
+
 	BUG_ON(i >= MAX_COLOR_NODE);
 	BUG_ON(list_empty(&zone->color_list[i]));
-	
+
 	page = list_entry(zone->color_list[i].next, struct page, lru);
-	
+
 	list_del(&page->lru);
-	
+
 	if (list_empty(&zone->color_list[i]))
 		bitmap_clear(zone->color_map, i, 1);
-	
+
 	zone->free_area[0].nr_free--;
 	color = page_color(page);
 	bank = page_bank(page);
@@ -1233,12 +1230,12 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 		int area_index;
 		unsigned long s_pfn = zone->zone_start_pfn;
 		unsigned long e_pfn = zone_end_pfn(zone);
-		
+
 		if (color_req == 2)
 			area_index = get_area_index(1);
 		else
 			area_index = get_area_index(cpu);
-		
+
 		//printk(KERN_INFO "CPU%d color_request %d, area_index %d\n", cpu, color_req, area_index);
 		//printk(KERN_INFO "COLOR PAGE requested on CPU%d with order = %d migratetype = %d\n", cpu, order, migratetype);
 		/* Find a page of the appropriate size in the preferred list */
@@ -1249,11 +1246,11 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 				//printk(KERN_INFO "P%d order %d list empty\n", cpu, current_order);
 				continue;
 			}
-			
+
 			if (order >= MAX_CONTIG_ORDER) { // requested order >= 3 , must be uncacheable.
 				page = list_entry(area->free_list[migratetype].next, struct page, lru);
 				found = 1;
-			} else {		
+			} else {
 				list_for_each_entry(page, &area->free_list[migratetype], lru) {
 					//printk(KERN_INFO "P%d __rmqueue_smallest order [%d] list entry %p color %d pfn:%05lx\n", cpu, current_order, page, page_color(page), page_to_pfn(page));
 					if (current_order < MAX_CONTIG_ORDER) {
@@ -1262,7 +1259,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 							found = 1;
 							break;
 						}
-					} else {	
+					} else {
 						int size = 1 << current_order;
 						for (offset = 0; offset < size; offset++) {
 							if (is_in_llc_partition(&page[offset], cpu) && (page_to_pfn(&page[offset]) >= s_pfn && page_to_pfn(&page[offset]) < e_pfn)) {
@@ -1275,17 +1272,17 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 					}
 				}
 			}
-			
+
 			//printk(KERN_INFO "P%d __rmqueue_smallest LAST list entry %p\n", cpu, page);
-			
+
 			if (!found)
 				continue;
 			//printk(KERN_INFO "P%d __rmqueue_smallest LAST list entry %p, order %d current_order %d offset %d\n", cpu, page, order, current_order, offset);
-			
+
 			list_del(&page->lru);
 			rmv_page_order(page);
 			area->nr_free--;
-			
+
 			if (offset == 0) {
 				expand(zone, page, order, current_order, area, migratetype);
 			} else {
@@ -1297,7 +1294,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 				//area->nr_free--;
 				expand(zone, page, order, frac, area, migratetype);
 			}
-			
+
 			set_freepage_migratetype(page, migratetype);
 			//printk(KERN_INFO "__rmqueue_smallest(): CPU%d COLOR %d BANK %d page order %d return %p pfn:%05lx\n", cpu, page_color(page), page_bank(page), order, page, page_to_pfn(page));
 			return page;
@@ -1320,7 +1317,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 			return page;
 		}
 	}
-	
+
 	return NULL;
 }
 
@@ -1547,23 +1544,23 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 		int area_index;
 		unsigned long s_pfn = zone->zone_start_pfn;
 		unsigned long e_pfn = zone_end_pfn(zone);
-		
+
 		if (color_req == 2)
 			area_index = get_area_index(1);
 		else
 			area_index = get_area_index(cpu);
-		
+
 		/* Find the largest possible block of pages in the other list */
 		for (current_order = MAX_PARTITIONED_ORDER-1;
 					current_order >= order && current_order <= MAX_PARTITIONED_ORDER-1;
-					--current_order) {		
+					--current_order) {
 			int offset = 0;
 			area = &(zone->free_area_d[area_index][current_order]);
 			fallback_mt = find_suitable_fallback(area, current_order,
 					start_migratetype, false, &can_steal);
 			if (fallback_mt == -1)
 				continue;
-	
+
 			if (order >= MAX_CONTIG_ORDER) {
 				page = list_entry(area->free_list[fallback_mt].next, struct page, lru);
 				found = 1;
@@ -1594,7 +1591,7 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 
 			if (!found)
 				continue;
-			
+
 			if (can_steal)
 				steal_suitable_fallback(zone, page, start_migratetype);
 
@@ -1613,9 +1610,9 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 				area = &(zone->free_area_d[area_index][frac]);
 				//area->nr_free--;
 				expand(zone, page, order, frac, area, start_migratetype);
-				
+
 			}
-				
+
 
 			/*
 			 * The freepage_migratetype may differ from pageblock's
@@ -1629,7 +1626,7 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 
 			trace_mm_page_alloc_extfrag(page, order, current_order,
 				start_migratetype, fallback_mt);
-		
+
 			//printk(KERN_INFO "P%d __rmqueue_fallback(): cpu%d's bank COLOR %d BANK %d page order %d return %p pfn:%05lx\n", cpu, area_index, page_color(page), page_bank(page), order, page, page_to_pfn(page));
 			return page;
 		}
@@ -1672,7 +1669,7 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype,
 			return page;
 		}
 	}
-	
+
 	return NULL;
 }
 
@@ -1698,7 +1695,7 @@ retry_reserve:
 //#ifdef CONFIG_SCHED_DEBUG_TRACE
 			if (color_req)
 				printk(KERN_INFO "page received from __rmqueue_fallback()");
-#endif			
+#endif
 		}
 
 		/*
@@ -1939,8 +1936,6 @@ void free_hot_cold_page(struct page *page, bool cold)
 	unsigned long flags;
 	unsigned long pfn = page_to_pfn(page);
 	int migratetype;
-	//unsigned int part_no;
-	//int is_local, is_hc_page;
 
 	if (!free_pages_prepare(page, 0))
 		return;
@@ -1948,8 +1943,8 @@ void free_hot_cold_page(struct page *page, bool cold)
 	migratetype = get_pfnblock_migratetype(page, pfn);
 	set_freepage_migratetype(page, migratetype);
 	local_irq_save(flags);
-	
-	
+
+
 	if (bank_to_partition(page_bank(page)) == NR_CPUS)
 		__count_vm_event(PGFREE);
 	else if (bank_to_partition(page_bank(page)) < NR_CPUS) {
@@ -1957,7 +1952,7 @@ void free_hot_cold_page(struct page *page, bool cold)
 		free_one_page(zone, page, pfn, 0, migratetype);
 		goto out;
 	}
-	
+
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
 	 * Free ISOLATE pages back to the allocator because they are being
@@ -1972,33 +1967,18 @@ void free_hot_cold_page(struct page *page, bool cold)
 		}
 		migratetype = MIGRATE_MOVABLE;
 	}
-	
-	//part_no = bank_to_partition(page_bank(page));
-	//BUG_ON(part_no<0);
-	
-	//if (part_no == smp_processor_id())
-	//		is_local = 1;
-	//else
-	//		is_local = 0;
-	
-	//is_hc_page = is_in_llc_partition(page, smp_processor_id());
-	//if (part_no != NR_CPUS)
-	//	printk(KERN_ALERT "CPU%d Free order-0 page bank = %d, color = %d, is_local %d is_hc_page %d\n", smp_processor_id(), page_bank(page), page_color(page), is_local, is_hc_page);
-	//if (!is_local || !is_hc_page) {
-		pcp = &this_cpu_ptr(zone->pageset)->pcp;
-		if (!cold)
-			list_add(&page->lru, &pcp->lists[migratetype]);
-		else
-			list_add_tail(&page->lru, &pcp->lists[migratetype]);
-		pcp->count++;
-		if (pcp->count >= pcp->high) {
-			unsigned long batch = READ_ONCE(pcp->batch);
-			free_pcppages_bulk(zone, batch, pcp);
-			pcp->count -= batch;
-		}
-//	} else {
-//		__free_page(page);
-//	}
+
+	pcp = &this_cpu_ptr(zone->pageset)->pcp;
+	if (!cold)
+		list_add(&page->lru, &pcp->lists[migratetype]);
+	else
+		list_add_tail(&page->lru, &pcp->lists[migratetype]);
+	pcp->count++;
+	if (pcp->count >= pcp->high) {
+		unsigned long batch = READ_ONCE(pcp->batch);
+		free_pcppages_bulk(zone, batch, pcp);
+		pcp->count -= batch;
+	}
 out:
 	local_irq_restore(flags);
 }
@@ -2134,13 +2114,13 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 
 	if ((gfp_flags & __GFP_CPU1) != 0)
 		colored_req = 2;
-		
-//#ifdef CONFIG_SCHED_DEBUG_TRACE	
+
+//#ifdef CONFIG_SCHED_DEBUG_TRACE
 #if 0
 	if (colored_req)
 		printk(KERN_INFO "buffered_rmqueue(): colored_req %d received\n", colored_req);
 #endif
-	
+
 	if (likely(order == 0) && !colored_req) {
 		struct per_cpu_pages *pcp;
 		struct list_head *list;
@@ -4673,12 +4653,12 @@ static void __meminit zone_init_free_lists(struct zone *zone)
 {
 	unsigned int order, t;
 	int cpu;
-	
+
 	for_each_migratetype_order(order, t) {
 		INIT_LIST_HEAD(&zone->free_area[order].free_list[t]);
 		zone->free_area[order].nr_free = 0;
 	}
-	
+
 	/* Initialize per-partition free_area data structures */
 	for (cpu = 0; cpu < NR_CPUS; cpu++) {
 		for (order = 0; order < MAX_PARTITIONED_ORDER; order++) {

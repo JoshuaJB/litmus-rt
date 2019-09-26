@@ -2248,7 +2248,7 @@ static int vb2_internal_streamon(struct vb2_queue *q, enum v4l2_buf_type type)
 	 * Tell driver to start streaming provided sufficient buffers
 	 * are available.
 	 */
-printk(KERN_INFO "vb2_internal_streamon()\n");
+	printk(KERN_INFO "vb2_internal_streamon()\n");
 	if (q->queued_count >= q->min_buffers_needed) {
 		ret = vb2_start_streaming(q);
 		if (ret) {
@@ -2537,7 +2537,7 @@ int vb2_mmap(struct vb2_queue *q, struct vm_area_struct *vma)
 			"MMAP invalid, as it would overflow buffer length\n");
 		return -EINVAL;
 	}
-printk(KERN_INFO "memop mmap %pF\n", vb->vb2_queue->mem_ops->mmap);
+	printk(KERN_INFO "memop mmap %pF\n", vb->vb2_queue->mem_ops->mmap);
 	mutex_lock(&q->mmap_lock);
 	ret = call_memop(vb, mmap, vb->planes[plane].mem_priv, vma);
 	mutex_unlock(&q->mmap_lock);

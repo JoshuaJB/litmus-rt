@@ -429,7 +429,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	 * We know this isn't the last reference.
 	 */
 	page_unfreeze_refs(page, prev_count);
-	
+
 	/*
 	 * If moved to a different zone then also account
 	 * the page for that zone. Other VM counters will be
@@ -650,7 +650,7 @@ void replicate_page_copy(struct page *newpage, struct page *page)
 			SetPageDirty(newpage);
 		else
 			__set_page_dirty_nobuffers(newpage);
- 	}
+	}
 
 	/*
 	 * Copy NUMA information to the new page, to prevent over-eager
@@ -663,7 +663,7 @@ void replicate_page_copy(struct page *newpage, struct page *page)
 	if (PageMlocked(page)) {
 		unsigned long flags;
 		int nr_pages = hpage_nr_pages(page);
-		
+
 		local_irq_save(flags);
 		SetPageMlocked(newpage);
 		__mod_zone_page_state(page_zone(newpage), NR_MLOCK, nr_pages);
@@ -1181,7 +1181,7 @@ static int __unmap_and_copy(struct page *page, struct page *newpage,
 			.arg = (void *)(TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS),
 		};
 		ttu_ret = rmap_walk(page, &rwc);
-		
+
 		page_was_mapped = 1;
 	}
 
@@ -1297,7 +1297,7 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	struct page *newpage;
 	struct shared_lib_page *lib_page;
 	int master_exist_in_psl = 0, has_replica = 0, cpu = private/2;
-	
+
 	/* check if this page is in the PSL list */
 	rcu_read_lock();
 	list_for_each_entry(lib_page, &shared_lib_pages, list)
@@ -1328,12 +1328,12 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 			goto out;
 
 	rc = __unmap_and_copy(page, newpage, force, mode, has_replica);
-	
+
 	if (has_replica == 0 && rc == MIGRATEPAGE_SUCCESS) {
 		lib_page->r_page[cpu] = newpage;
 		lib_page->r_pfn[cpu] = page_to_pfn(newpage);
 	}
-	
+
 out:
 	if (rc != -EAGAIN) {
 		/*
@@ -1347,7 +1347,7 @@ out:
 				page_is_file_cache(page));
 		putback_lru_page(page);
 	}
-	
+
 	/*
 	 * If migration was not successful and there's a freeing callback, use
 	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed
@@ -1596,7 +1596,7 @@ int replicate_pages(struct list_head *from, new_page_t get_new_page,
 
 		list_for_each_entry_safe(page, page2, from, lru) {
 			cond_resched();
-			
+
 			rc = unmap_and_copy(get_new_page, put_new_page, private, page, pass > 2, mode);
 
 			switch(rc) {

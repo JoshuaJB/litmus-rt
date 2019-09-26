@@ -955,9 +955,9 @@ void page_move_anon_rmap(struct page *page,
 
 /**
  * __page_set_anon_rmap - set up new anonymous rmap
- * @page:	Page to add to rmap	
+ * @page:	Page to add to rmap
  * @vma:	VM area to add page to.
- * @address:	User virtual address of the mapping	
+ * @address:	User virtual address of the mapping
  * @exclusive:	the page is exclusively owned by the current process
  */
 static void __page_set_anon_rmap(struct page *page,
@@ -1351,7 +1351,7 @@ static int try_to_unmap_one_entry(struct page *page, struct vm_area_struct *vma,
 			ret = SWAP_FAIL;
 			goto out_unmap;
 		}
-  	}
+	}
 
 	/* Nuke the page table entry. */
 	flush_cache_page(vma, address, page_to_pfn(page));
@@ -1423,7 +1423,7 @@ static int try_to_unmap_one_entry(struct page *page, struct vm_area_struct *vma,
 		/* Establish migration entry for a file page */
 		swp_entry_t entry;
 		entry = make_migration_entry(page, pte_write(pteval));
-		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));	
+		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));
 	} else
 		dec_mm_counter(mm, MM_FILEPAGES);
 
@@ -1466,7 +1466,7 @@ int try_to_unmap_one_only(struct page *page, struct vm_area_struct *vma,
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct mm_struct *current_mm;
-	
+
 	rcu_read_lock();
 	get_task_struct(current);
 	rcu_read_unlock();
@@ -1474,12 +1474,12 @@ int try_to_unmap_one_only(struct page *page, struct vm_area_struct *vma,
 	put_task_struct(current);
 	if (!current_mm)
 		BUG();
-	
+
 	if (mm == current_mm) {
 		return try_to_unmap_one_entry(page, vma, address, arg);
 	}
 	return SWAP_AGAIN;
-}	
+}
 
 bool is_vma_temporary_stack(struct vm_area_struct *vma)
 {

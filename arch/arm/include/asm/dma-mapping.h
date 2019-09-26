@@ -225,7 +225,7 @@ static inline void *dma_alloc_attrs(struct device *dev, size_t size,
 		printk(KERN_INFO "func: %pF at address: %p\n", ops->alloc, ops->alloc);
 	}
 #endif
-	
+
 	cpu_addr = ops->alloc(dev, size, dma_handle, flag, attrs);
 	debug_dma_alloc_coherent(dev, size, *dma_handle, cpu_addr);
 	return cpu_addr;

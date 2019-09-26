@@ -22,9 +22,9 @@ long mc2_task_client_init(struct task_client *tc, struct mc2_task *mc2_param, st
 	if ((mc2_param->crit < CRIT_LEVEL_A) ||
 		(mc2_param->crit > CRIT_LEVEL_C))
 		return -EINVAL;
-	
+
 	TRACE_TASK(tsk, "mc2_task_client_init: crit_level = %d\n", mc2_param->crit);
-	
+
 	return 0;
 }
 
@@ -33,7 +33,7 @@ asmlinkage long sys_set_mc2_task_param(pid_t pid, struct mc2_task __user * param
 	struct task_struct *target;
 	int retval = -EINVAL;
 	struct mc2_task *mp = kzalloc(sizeof(*mp), GFP_KERNEL);
-	
+
 	if (!mp)
 		return -ENOMEM;
 
@@ -66,8 +66,7 @@ asmlinkage long sys_set_mc2_task_param(pid_t pid, struct mc2_task __user * param
 			"because of invalid criticality level\n", pid);
 		goto out_unlock;
 	}
-	
-	//target->rt_param.plugin_state = mp;
+
 	target->rt_param.mc2_data = mp;
 
 	retval = 0;

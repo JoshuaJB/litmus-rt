@@ -124,7 +124,7 @@ struct msg_msg *load_msg(const void __user *src, size_t len, long mtype)
 	int err = -EFAULT;
 	size_t alen;
 
-TS_NET_RX_SOFTIRQ_START;	
+TS_NET_RX_SOFTIRQ_START;
 	msg = alloc_msg(len, mtype);
 	if (msg == NULL)
 		return ERR_PTR(-ENOMEM);
@@ -142,10 +142,7 @@ TS_NET_RX_SOFTIRQ_START;
 			goto out_err;
 	}
 TS_NET_RX_SOFTIRQ_END;
-/*	if (mtype == 3) {
-		cache_lockdown(0xFFFF8000, smp_processor_id());
-	}
-*/
+
 	err = security_msg_msg_alloc(msg);
 	if (err)
 		goto out_err;
@@ -213,12 +210,11 @@ void free_msg(struct msg_msg *msg)
 {
 	struct msg_msgseg *seg;
 	long mtype = msg->m_type;
-	
+
 	security_msg_msg_free(msg);
 
 	seg = msg->next;
 	if (mtype == 1) {
-		//printk(KERN_INFO "free_msg(): SBP message\n");
 		dma_free_coherent(NULL, msg->alloc_len, msg, msg->handle);
 	} else if (mtype != 3) {
 		kfree(msg);
@@ -226,7 +222,6 @@ void free_msg(struct msg_msg *msg)
 	while (seg != NULL) {
 		struct msg_msgseg *tmp = seg->next;
 		if (mtype == 1) {
-			//printk(KERN_INFO "free_msg(): SBP message seg %d\n", seg->seg_len);
 			dma_free_coherent(NULL, sizeof(*seg)+(seg->seg_len), seg, seg->seg_handle);
 		} else if (mtype != 3)
 			kfree(seg);

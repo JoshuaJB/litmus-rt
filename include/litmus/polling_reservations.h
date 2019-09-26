@@ -1,3 +1,9 @@
+/**
+ * Copyright 2019 members of the LITMUS^RT project
+ * WARNING: This file is copied from reservation/table-driven.h and
+ * reservations/polling.h as included in recent LITMUS^RT versions.
+ * ***DO NOT MODIFY***
+ */
 #ifndef LITMUS_POLLING_RESERVATIONS_H
 #define LITMUS_POLLING_RESERVATIONS_H
 

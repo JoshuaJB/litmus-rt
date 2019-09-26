@@ -46,8 +46,8 @@ static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size,
 			       enum dma_data_direction dma_dir, gfp_t gfp_flags)
 {
 	struct vb2_vmalloc_buf *buf;
-/* video buffer allocation */
-printk(KERN_INFO "vb2_vmalloc_alloc(): size %ld requested\n", size);
+	/* video buffer allocation */
+	printk(KERN_INFO "vb2_vmalloc_alloc(): size %ld requested\n", size);
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL | gfp_flags | VB2_FLAG);
 	if (!buf)
 		return NULL;

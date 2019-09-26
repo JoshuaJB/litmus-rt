@@ -82,7 +82,7 @@
 #define SKB_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
 #define SKB_FLAG	(0)
-#endif	
+#endif
 
 struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;

@@ -31,7 +31,7 @@ obj-y     = sched_plugin.o litmus.o \
 		replicate_lib.o \
 		cache_proc.o \
 		page_dev.o \
-		fakedev0.o 
+		fakedev0.o
 
 obj-$(CONFIG_PLUGIN_CEDF) += sched_cedf.o
 obj-$(CONFIG_PLUGIN_PFAIR) += sched_pfair.o

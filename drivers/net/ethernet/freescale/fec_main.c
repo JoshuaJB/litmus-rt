@@ -70,7 +70,7 @@
 #define FEC_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
 #define FEC_FLAG	(0)
-#endif	
+#endif
 
 static void set_multicast_list(struct net_device *ndev);
 static void fec_enet_itr_coal_init(struct net_device *ndev);
@@ -1597,7 +1597,7 @@ fec_enet_interrupt(int irq, void *dev_id)
 	fec_enet_collect_events(fep, int_events);
 
 	enter_irq_mode();
-	
+
 	if ((fep->work_tx || fep->work_rx) && fep->link) {
 		ret = IRQ_HANDLED;
 

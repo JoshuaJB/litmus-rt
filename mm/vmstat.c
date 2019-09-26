@@ -974,7 +974,7 @@ static void pagetypeinfo_showpartitionfree_print(struct seq_file *m,
 			struct list_head *curr;
 
 			area = &(zone->free_area_d[cpu][order]);
-			
+
 			list_for_each(curr, &area->free_list[mtype])
 				freecount++;
 			seq_printf(m, "%6lu ", freecount);
@@ -1243,16 +1243,16 @@ static const struct file_operations pagetypeinfo_file_ops = {
 	.release	= seq_release,
 };
 
-#define BANK_MASK  0x38000000     
+#define BANK_MASK  0x38000000
 #define BANK_SHIFT  27
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
 }
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
@@ -1263,7 +1263,7 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 {
 	int i;
 	int mtype;
-	
+
 	seq_printf(m, "Node %d, zone %8s", pgdat->node_id, zone->name);
 	seq_printf(m,
 		   "\n  pages free     %lu"
@@ -1312,16 +1312,6 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 		seq_printf(m, "\n  vm stats threshold: %d",
 				pageset->stat_threshold);
 #endif
-		/* pcp test */
-/*		seq_printf(m, "\n");
-		for (mtype = 0; mtype < MIGRATE_PCPTYPES; mtype++) {
-			struct page *p;
-			list_for_each_entry(p, &pageset->pcp.lists[mtype], lru) {
-				if (p)
-					seq_printf(m, "page bank = %d color = %d\n", page_bank(p), page_color(p));
-			}
-		}
-*/		
 	}
 	seq_printf(m,
 		   "\n  all_unreclaimable: %u"

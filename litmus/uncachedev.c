@@ -28,7 +28,7 @@ int litmus_uncache_vm_fault(struct vm_area_struct* vma,
 	/* modeled after SG DMA video4linux, but without DMA. */
 	/* (see drivers/media/video/videobuf-dma-sg.c) */
 	struct page *page;
-	
+
 	page = alloc_page(GFP_USER|GFP_COLOR);
 	if (!page)
 		return VM_FAULT_OOM;

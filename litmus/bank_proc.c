@@ -1,8 +1,8 @@
 /*
- * bank_proc.c -- Implementation of the page coloring for cache and bank partition. 
- *                The file will keep a pool of colored pages. Users can require pages with 
- *                specific color or bank number.
- *                Part of the code is modified from Jonathan Herman's code  
+ * bank_proc.c -- Implementation of the page coloring for cache and bank partition.
+ *                The file will keep a pool of colored pages. Users can require pages with
+ *                specific color or bank number
+ *                Part of the code is modified from Jonathan Herman's code.
  */
 #include <linux/init.h>
 #include <linux/types.h>
@@ -22,9 +22,9 @@
 #define LITMUS_LOCKDEP_NAME_MAX_LEN 50
 
 // This Address Decoding is used in imx6-sabredsd platform
-#define BANK_MASK  0x38000000     
+#define BANK_MASK  0x38000000
 #define BANK_SHIFT  27
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 
 #define PAGES_PER_COLOR 2000
@@ -85,7 +85,7 @@ struct mutex void_lockdown_proc;
 
 /*
  * Every page list should contain a lock, a list, and a number recording how many pages it store
- */ 
+ */
 struct color_group {
 	spinlock_t lock;
 	char _lock_name[LITMUS_LOCKDEP_NAME_MAX_LEN];
@@ -124,7 +124,7 @@ unsigned int two_exp(unsigned int e)
 static inline unsigned int first_index(unsigned long node)
 {
 	unsigned int bank_no = 0, color_no = 0;
-	
+
 	while(bank_no < NUM_BANKS) {
 		if ((bank_partition[node]>>bank_no) & 0x1)
 			break;
@@ -135,13 +135,13 @@ static inline unsigned int first_index(unsigned long node)
 			break;
 		color_no++;
 	}
-	return NUM_COLORS*bank_no + color_no; 
+	return NUM_COLORS*bank_no + color_no;
 }
 
 static inline unsigned int last_index(unsigned long node)
 {
 	unsigned int bank_no = NUM_BANKS-1, color_no = NUM_COLORS-1;
-	
+
 	while(bank_no >= 0) {
 		if ((bank_partition[node]>>bank_no) & 0x1)
 			break;
@@ -152,7 +152,7 @@ static inline unsigned int last_index(unsigned long node)
 			break;
 		color_no--;
 	}
-	return NUM_COLORS*bank_no + color_no; 
+	return NUM_COLORS*bank_no + color_no;
 }
 
 static inline unsigned int next_color(unsigned long node, unsigned int current_color)
@@ -163,7 +163,7 @@ static inline unsigned int next_color(unsigned long node, unsigned int current_c
 		current_color = 0;
 		ret = 1;
 	}
-	
+
 	while (try < NUM_COLORS) {
 		if ((set_partition[node]>>current_color)&0x1)
 			break;
@@ -187,7 +187,7 @@ static inline unsigned int next_bank(unsigned long node, unsigned int current_ba
 	if (current_bank == NUM_BANKS) {
 		current_bank = 0;
 	}
-	
+
 	while (try < NUM_BANKS) {
 		if ((bank_partition[node]>>current_bank)&0x1)
 			break;
@@ -216,13 +216,13 @@ static inline unsigned int get_next_index(unsigned long node, unsigned int curre
 	return bank_ret * NUM_COLORS + color_ret;
 }
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -230,23 +230,23 @@ static inline unsigned int page_bank(struct page *page)
 
 static inline unsigned int page_list_index(struct page *page)
 {
-    unsigned int idx;  
+    unsigned int idx;
     idx = (page_color(page) + page_bank(page)*(number_cachecolors));
 
-    return idx; 
+    return idx;
 }
 
 
 
 /*
- * It is used to determine the smallest number of page lists. 
+ * It is used to determine the smallest number of page lists.
  */
 static unsigned long smallest_nr_pages(void)
 {
 	unsigned long i, min_pages;
 	struct color_group *cgroup;
 	cgroup = &color_groups[16*2];
-	min_pages =atomic_read(&cgroup->nr_pages); 
+	min_pages =atomic_read(&cgroup->nr_pages);
 	for (i = 16*2; i < NUM_PAGE_LIST; ++i) {
 		cgroup = &color_groups[i];
 		if (atomic_read(&cgroup->nr_pages) < min_pages)
@@ -286,9 +286,9 @@ void add_page_to_color_list(struct page *page)
 }
 
 /*
- * Replenish the page pool. 
+ * Replenish the page pool.
  * If the newly allocate page is what we want, it will be pushed to the correct page list
- * otherwise, it will be freed. 
+ * otherwise, it will be freed.
  * A user needs to invoke this function until the page pool has enough pages.
  */
 static int do_add_pages(void)
@@ -299,12 +299,12 @@ static int do_add_pages(void)
 	int ret = 0;
 	int i = 0;
 	int free_counter = 0;
-	unsigned long counter[128]= {0}; 
-        
-	// until all the page lists contain enough pages 
+	unsigned long counter[128]= {0};
+
+	// until all the page lists contain enough pages
 	for (i=0; i< 1024*20;i++) {
 		page = alloc_page(GFP_HIGHUSER_MOVABLE);
-	
+
 		if (unlikely(!page)) {
 			printk(KERN_WARNING "Could not allocate pages.\n");
 			ret = -ENOMEM;
@@ -315,7 +315,7 @@ static int do_add_pages(void)
 		if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR && color>=0) {
 			add_page_to_color_list(page);
 		} else {
-			// Pages here will be freed later 
+			// Pages here will be freed later
 			list_add_tail(&page->lru, &free_later);
 			free_counter++;
 		}
@@ -331,23 +331,23 @@ out:
 }
 
 /*
- * Provide pages for replacement according cache color 
+ * Provide pages for replacement according cache color
  * This should be the only implementation here
- * This function should not be accessed by others directly. 
- * 
- */ 
+ * This function should not be accessed by others directly.
+ *
+ */
 static struct page *new_alloc_page_color( unsigned long color)
 {
-//	printk("allocate new page color = %d\n", color);	
+//	printk("allocate new page color = %d\n", color);
 	struct color_group *cgroup;
 	struct page *rPage = NULL;
-		
+
 	if( (color <0) || (color)>(number_cachecolors*number_banks -1)) {
-		TRACE_CUR("Wrong color %lu\n", color);	
+		TRACE_CUR("Wrong color %lu\n", color);
 		goto out;
 	}
 
-		
+
 	cgroup = &color_groups[color];
 	spin_lock(&cgroup->lock);
 	if (unlikely(!atomic_read(&cgroup->nr_pages))) {
@@ -372,7 +372,7 @@ struct page* get_colored_page(unsigned long color)
 }
 
 /*
- * provide pages for replacement according to  
+ * provide pages for replacement according to
  * node = 0 for Level A tasks in Cpu 0
  * node = 1 for Level B tasks in Cpu 0
  * node = 2 for Level A tasks in Cpu 1
@@ -381,19 +381,19 @@ struct page* get_colored_page(unsigned long color)
  * node = 5 for Level B tasks in Cpu 2
  * node = 6 for Level A tasks in Cpu 3
  * node = 7 for Level B tasks in Cpu 3
- * node = 8 for Level C tasks 
+ * node = 8 for Level C tasks
  */
 struct page *new_alloc_page(struct page *page, unsigned long node, int **x)
 {
 	struct page *rPage = NULL;
 	int try = 0;
 	unsigned int idx;
-	
+
 	if (node_index[node] == -1)
 		idx = first_index(node);
 	else
 		idx = node_index[node];
-	
+
 	BUG_ON(idx<0 || idx>127);
 	rPage =  new_alloc_page_color(idx);
 	if (node_index[node] == last_index(node))
@@ -411,7 +411,7 @@ struct page *new_alloc_page(struct page *page, unsigned long node, int **x)
 		rPage = new_alloc_page_color(idx);
 	}
 	node_index[node] = idx;
-	return rPage; 
+	return rPage;
 }
 
 
@@ -422,7 +422,7 @@ void reclaim_page(struct page *page)
 {
 	const unsigned long color = page_list_index(page);
 	spin_lock(&reclaim_lock);
-    	put_page(page);
+	put_page(page);
 	add_page_to_color_list(page);
 
 	spin_unlock(&reclaim_lock);
@@ -431,16 +431,16 @@ void reclaim_page(struct page *page)
 
 
 /*
- * Initialize the numbers of banks and cache colors 
- */ 
+ * Initialize the numbers of banks and cache colors
+ */
 static void __init init_variables(void)
 {
-	number_banks = counting_one_set(BANK_MASK); 
-	number_banks = two_exp(number_banks); 
+	number_banks = counting_one_set(BANK_MASK);
+	number_banks = two_exp(number_banks);
 
 	number_cachecolors = counting_one_set(CACHE_MASK);
 	number_cachecolors = two_exp(number_cachecolors);
-	NUM_PAGE_LIST = number_banks * number_cachecolors; 
+	NUM_PAGE_LIST = number_banks * number_cachecolors;
         printk(KERN_WARNING "number of banks = %d, number of cachecolors=%d\n", number_banks, number_cachecolors);
 	mutex_init(&void_lockdown_proc);
 	spin_lock_init(&reclaim_lock);
@@ -449,7 +449,7 @@ static void __init init_variables(void)
 
 
 /*
- * Initialize the page pool 
+ * Initialize the page pool
  */
 static int __init init_color_groups(void)
 {
@@ -549,223 +549,12 @@ out:
 }
 
 /*
-static struct ctl_table cache_table[] =
-{
-        
-	{
-		.procname	= "C0_LA_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[0],
-		.maxlen		= sizeof(set_partition[0]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},	
-	{
-		.procname	= "C0_LB_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[1],
-		.maxlen		= sizeof(set_partition[1]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},	
-	{
-		.procname	= "C1_LA_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[2],
-		.maxlen		= sizeof(set_partition[2]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},
-	{
-		.procname	= "C1_LB_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[3],
-		.maxlen		= sizeof(set_partition[3]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},
-	{
-		.procname	= "C2_LA_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[4],
-		.maxlen		= sizeof(set_partition[4]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},
-	{
-		.procname	= "C2_LB_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[5],
-		.maxlen		= sizeof(set_partition[5]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},
-	{
-		.procname	= "C3_LA_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[6],
-		.maxlen		= sizeof(set_partition[6]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},
-	{
-		.procname	= "C3_LB_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[7],
-		.maxlen		= sizeof(set_partition[7]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},	
-	{
-		.procname	= "Call_LC_set",
-		.mode		= 0666,
-		.proc_handler	= set_partition_handler,
-		.data		= &set_partition[8],
-		.maxlen		= sizeof(set_partition[8]),
-		.extra1		= &set_partition_min,
-		.extra2		= &set_partition_max,
-	},	
-	{
-		.procname	= "C0_LA_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[0],
-		.maxlen		= sizeof(set_partition[0]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},
-	{
-		.procname	= "C0_LB_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[1],
-		.maxlen		= sizeof(set_partition[1]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},		
-	{
-		.procname	= "C1_LA_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[2],
-		.maxlen		= sizeof(set_partition[2]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},
-	{
-		.procname	= "C1_LB_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[3],
-		.maxlen		= sizeof(set_partition[3]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},
-	{
-		.procname	= "C2_LA_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[4],
-		.maxlen		= sizeof(set_partition[4]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},	
-	{
-		.procname	= "C2_LB_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[5],
-		.maxlen		= sizeof(set_partition[5]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},		
-	{
-		.procname	= "C3_LA_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[6],
-		.maxlen		= sizeof(set_partition[6]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},	
-	{
-		.procname	= "C3_LB_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[7],
-		.maxlen		= sizeof(set_partition[7]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},	
-	{
-		.procname	= "Call_LC_bank",
-		.mode		= 0666,
-		.proc_handler	= bank_partition_handler,
-		.data		= &bank_partition[8],
-		.maxlen		= sizeof(set_partition[8]),
-		.extra1		= &bank_partition_min,
-		.extra2		= &bank_partition_max,
-	},	
-	{
-		.procname	= "show_page_pool",
-		.mode		= 0666,
-		.proc_handler	= show_page_pool_handler,
-		.data		= &show_page_pool,
-		.maxlen		= sizeof(show_page_pool),
-	},		{
-		.procname	= "refill_page_pool",
-		.mode		= 0666,
-		.proc_handler	= refill_page_pool_handler,
-		.data		= &refill_page_pool,
-		.maxlen		= sizeof(refill_page_pool),
-	},	
-	{ }
-};
-*/
-/*
-static struct ctl_table litmus_dir_table[] = {
-	{
-		.procname	= "litmus",
- 		.mode		= 0555,
-		.child		= cache_table,
-	},
-	{ }
-};
-*/
-
-//static struct ctl_table_header *litmus_sysctls;
-
-
-/*
- * Initialzie this proc 
+ * Initialzie this proc
  */
 static int __init litmus_color_init(void)
 {
 	int err=0;
-        printk("Init bankproc.c\n");
-/*
-	init_variables();
-
-	printk(KERN_INFO "Registering LITMUS^RT proc color sysctl.\n");
-
-	litmus_sysctls = register_sysctl_table(litmus_dir_table);
-	if (!litmus_sysctls) {
-		printk(KERN_WARNING "Could not register LITMUS^RT color sysctl.\n");
-		err = -EFAULT;
-		goto out;
-	}
-
-	init_color_groups();			
-	do_add_pages();
-*/
+	printk("Init bankproc.c\n");
 	printk(KERN_INFO "Registering LITMUS^RT color and bank proc.\n");
 out:
 	return err;

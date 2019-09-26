@@ -31,7 +31,7 @@
 #define UVC_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
 #define UVC_FLAG	(GFP_COLOR)
-#endif	
+#endif
 
 /* ------------------------------------------------------------------------
  * UVC Controls

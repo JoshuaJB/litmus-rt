@@ -143,7 +143,7 @@
 #define DEV_FLAG	(GFP_COLOR|GFP_CPU1)
 #else
 #define DEV_FLAG	(0)
-#endif	
+#endif
 
 /* Instead of increasing this, you should create a hash table. */
 #define MAX_GRO_SKBS 8

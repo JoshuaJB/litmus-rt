@@ -126,7 +126,7 @@ struct reservation {
 	struct reservation_ops *ops;
 
 	struct list_head clients;
-	
+
 	/* for global env. */
 	int scheduled_on;
 	int event_added;
@@ -200,7 +200,7 @@ struct task_struct* sup_dispatch(struct sup_reservation_environment* sup_env);
 
 struct reservation* sup_find_by_id(struct sup_reservation_environment* sup_env,
 	unsigned int id);
-	
+
 /* A global multiprocessor reservation environment. */
 
 typedef enum {
@@ -233,7 +233,7 @@ struct gmp_reservation_environment {
 
 	/* timer event ordered by next_update */
 	struct list_head next_events;
-	
+
 	/* (schedule_now == true) means call gmp_dispatch() now */
 	int schedule_now;
 	/* set to true if a call to gmp_dispatch() is imminent */

@@ -353,15 +353,15 @@ static struct page *alloc_colored_page(struct page *page, unsigned long node, in
 {
 	struct page *newpage;
 	gfp_t gfp_mask;
-	
+
 	gfp_mask = GFP_HIGHUSER_MOVABLE;
 	if (node != 8)
 		gfp_mask |= GFP_COLOR;
 	if (node == 9)
 		gfp_mask |= GFP_CPU1;
-	
+
 	newpage = alloc_pages(gfp_mask, 0);
-	
+
 	return newpage;
 }
 
@@ -370,7 +370,7 @@ LIST_HEAD(shared_lib_pages);
 
 EXPORT_SYMBOL(shared_lib_pages);
 
-/* Reallocate pages of a task 
+/* Reallocate pages of a task
  * Private pages - Migrate to a new page.
  * Shared pages - Use a replica. Make a replica if necessary.
  * @cpu : CPU id of the calling task
@@ -384,13 +384,13 @@ asmlinkage long sys_set_page_color(int cpu)
 	unsigned long node;
 	enum crit_level lv;
 	struct mm_struct *mm;
-		
+
 	LIST_HEAD(pagelist);
 	LIST_HEAD(task_shared_pagelist);
 	LIST_HEAD(fakedev_pagelist);
 
 	migrate_prep();
-	
+
 	/* Find the current mm_struct */
 	rcu_read_lock();
 	get_task_struct(current);
@@ -407,7 +407,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		struct page *old_page = NULL;
 		int pages_in_vma = 0;
 		int fakedev_pages = 0;
-		
+
 		if (vma_itr->vm_flags & VM_DONOTMOVE) {
 			fakedev_pages = 1;
 		}
@@ -415,7 +415,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		/* Traverse all pages in vm_area_struct */
 		for (i = 0; i < num_pages; i++) {
 			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
-			
+
 			if (IS_ERR(old_page))
 				continue;
 			if (!old_page)
@@ -452,7 +452,7 @@ asmlinkage long sys_set_page_color(int cpu)
 					}
 				}
 				rcu_read_unlock();
-	
+
 				if (is_exist == 0) {
 					int cpu_i;
 					lib_page = kmalloc(sizeof(struct shared_lib_page), GFP_KERNEL);
@@ -464,7 +464,7 @@ asmlinkage long sys_set_page_color(int cpu)
 					}
 					list_add_tail(&lib_page->list, &shared_lib_pages);
 				}
-				
+
 				/* add to task_shared_pagelist */
 				ret = isolate_lru_page(old_page);
 				if (!ret) {
@@ -484,7 +484,7 @@ asmlinkage long sys_set_page_color(int cpu)
 						list_add_tail(&old_page->lru, &pagelist);
 					else
 						list_add_tail(&old_page->lru, &fakedev_pagelist);
-					
+
 					inc_zone_page_state(old_page, NR_ISOLATED_ANON + !PageSwapBacked(old_page));
 					nr_pages++;
 				} else if (!is_in_correct_bank(old_page, cpu)) {
@@ -499,7 +499,7 @@ asmlinkage long sys_set_page_color(int cpu)
 		TRACE_TASK(current, "PAGES_IN_VMA = %d size = %d KB\n", pages_in_vma, pages_in_vma*4);
 		vma_itr = vma_itr->vm_next;
 	}
-	
+
 	ret = 0;
 	lv = tsk_rt(current)->mc2_data->crit;
 	if (cpu == -1)
@@ -526,7 +526,7 @@ asmlinkage long sys_set_page_color(int cpu)
 			putback_movable_pages(&fakedev_pagelist);
 		}
 	}
-	
+
 	/* Replicate shared pages */
 	if (!list_empty(&task_shared_pagelist)) {
 		ret = replicate_pages(&task_shared_pagelist, alloc_colored_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
@@ -541,22 +541,22 @@ asmlinkage long sys_set_page_color(int cpu)
 
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d nr_not_migrated = %d\n", nr_pages, nr_failed, nr_not_migrated);
 	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_shared_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_shared_pages, nr_failed, nr_not_migrated);
-	
+
 	return nr_not_migrated;
 }
 
-#define BANK_MASK  0x38000000     
+#define BANK_MASK  0x38000000
 #define BANK_SHIFT  27
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -567,14 +567,14 @@ asmlinkage long sys_test_call(unsigned int param)
 {
 	long ret = 0;
 	struct vm_area_struct *vma_itr = NULL;
-	
+
 	TRACE_CUR("test_call param = %d\n", param);
-	
-	/* if param == 0, 
-	 * show vm regions and the page frame numbers 
+
+	/* if param == 0,
+	 * show vm regions and the page frame numbers
 	 * associated with the vm region.
-	 * if param == 1, 
-	 * print the master list. 
+	 * if param == 1,
+	 * print the master list.
 	 */
 	if (param == 0) {
 		down_read(&current->mm->mmap_sem);
@@ -588,11 +588,11 @@ asmlinkage long sys_test_call(unsigned int param)
 			TRACE_TASK(current, "vm_flags : %lx\n", vma_itr->vm_flags);
 			TRACE_TASK(current, "vm_prot  : %x\n", pgprot_val(vma_itr->vm_page_prot));
 			TRACE_TASK(current, "VM_SHARED? %ld\n", vma_itr->vm_flags & VM_SHARED);
-	
+
 			num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 			for (i = 0; i < num_pages; i++) {
 				old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
-				
+
 				if (IS_ERR(old_page))
 					continue;
 				if (!old_page)
@@ -603,9 +603,8 @@ asmlinkage long sys_test_call(unsigned int param)
 					put_page(old_page);
 					continue;
 				}
-				
+
 				TRACE_TASK(current, "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
-				//printk(KERN_INFO "addr: %08x, phy: %08x, color: %d, bank: %d, pfn: %05lx, _mapcount: %d, _count: %d flags: %s%s%s mapping: %p\n", vma_itr->vm_start + PAGE_SIZE*i, page_to_phys(old_page), page_color(old_page), page_bank(old_page), page_to_pfn(old_page), page_mapcount(old_page), page_count(old_page), vma_itr->vm_flags&VM_READ?"r":"-", vma_itr->vm_flags&VM_WRITE?"w":"-", vma_itr->vm_flags&VM_EXEC?"x":"-", &(old_page->mapping));
 				put_page(old_page);
 			}
 			vma_itr = vma_itr->vm_next;
@@ -627,7 +626,7 @@ asmlinkage long sys_test_call(unsigned int param)
 	} else if (param == 2) {
 		flush_cache_all();
 	}
-	
+
 	return ret;
 }
 
@@ -639,14 +638,14 @@ asmlinkage long sys_recolor_mem(void* mem, int n_pages, int cpu)
 	unsigned long node;
 	enum crit_level lv;
 	struct mm_struct *mm;
-	
+
 	LIST_HEAD(pagelist);
-	
+
 	printk(KERN_INFO "mem addr = %d\n", (unsigned long)mem);
 	return 0;
-	
+
 	migrate_prep();
-	
+
 	/* Find the current mm_struct */
 	rcu_read_lock();
 	get_task_struct(current);
@@ -662,15 +661,15 @@ asmlinkage long sys_recolor_mem(void* mem, int n_pages, int cpu)
 		unsigned int num_pages = 0, i;
 		struct page *old_page = NULL;
 		int pages_in_vma = 0;
-		
+
 		num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 		if (num_pages != n_pages)
 			continue;
-		
+
 		/* Traverse all pages in vm_area_struct */
 		for (i = 0; i < num_pages; i++) {
 			old_page = follow_page(vma_itr, vma_itr->vm_start + PAGE_SIZE*i, FOLL_GET|FOLL_SPLIT);
-			
+
 			if (IS_ERR(old_page))
 				continue;
 			if (!old_page)
@@ -710,7 +709,7 @@ asmlinkage long sys_recolor_mem(void* mem, int n_pages, int cpu)
 		TRACE_TASK(current, "PAGES_IN_VMA = %d size = %d KB\n", pages_in_vma, pages_in_vma*4);
 		vma_itr = vma_itr->vm_next;
 	}
-	
+
 	ret = 0;
 	lv = tsk_rt(current)->mc2_data->crit;
 	if (cpu == -1)
@@ -727,12 +726,12 @@ asmlinkage long sys_recolor_mem(void* mem, int n_pages, int cpu)
 			putback_movable_pages(&pagelist);
 		}
 	}
-	
+
 	up_read(&mm->mmap_sem);
 
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d nr_not_migrated = %d\n", nr_pages, nr_failed, nr_not_migrated);
 	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_failed, nr_not_migrated);
-	
+
 	return nr_not_migrated;
 }
 
@@ -1075,7 +1074,7 @@ static int litmus_msgpool_init(void)
 {
 	int i;
 	lt_t t1, t2;
-	
+
 	msgpages = alloc_pages(GFP_KERNEL, 4);
 	if (!msgpages) {
 		printk(KERN_WARNING "No memory\n");
@@ -1084,7 +1083,7 @@ static int litmus_msgpool_init(void)
 	msgvaddr = page_address(msgpages);
 
 	printk(KERN_INFO "pfn %05lx addr %p\n", page_to_pfn(msgpages), msgvaddr);
-	
+
 	for (i = 0; i < 8; i++) {
 		cache_lockdown(0xFFFF8000, i);
 	}
@@ -1092,7 +1091,7 @@ static int litmus_msgpool_init(void)
 	color_read_in_mem_lock(0xFFFF7FFF, 0xFFFF8000, msgvaddr, msgvaddr + 65536);
 	t2 = litmus_clock() - t1;
 	printk(KERN_INFO "mem read time %lld\n", t2);
-	
+
 	return 0;
 }
 
@@ -1130,9 +1129,9 @@ static int __init _init_litmus(void)
 	color_mask = ((cache_info_sets << line_size_log) - 1) ^ (PAGE_SIZE - 1);
 	printk("Page color mask %lx\n", color_mask);
 #endif
-	
+
 	litmus_msgpool_init();
-	
+
 	return 0;
 }
 

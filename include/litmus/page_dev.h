@@ -1,8 +1,8 @@
 /*
- * page_dev.h - Implementation of the page coloring for cache and bank partition. 
+ * page_dev.h - Implementation of the page coloring for cache and bank partition.
  * Author: Namhoon Kim (namhoonk@cs.unc.edu)
  */
- 
+
 #ifndef _LITMUS_PAGE_DEV_H
 #define _LITMUS_PAGE_DEV_H
 

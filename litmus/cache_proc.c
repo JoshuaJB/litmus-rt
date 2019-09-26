@@ -174,7 +174,7 @@ u32 lockdown_reg[9] = {
 	0x00000000,
 	0x00000000,
 };
-	
+
 
 #define ld_d_reg(cpu) ({ int __cpu = cpu; \
 			void __iomem *__v = cache_base + L2X0_LOCKDOWN_WAY_D_BASE + \
@@ -198,7 +198,7 @@ static inline void cache_wait_way(void __iomem *reg, unsigned long mask)
 		cpu_relax();
 }
 
-#ifdef CONFIG_CACHE_L2X0 
+#ifdef CONFIG_CACHE_L2X0
 static inline void cache_wait(void __iomem *reg, unsigned long mask)
 {
 	/* cache operations by line are atomic on PL310 */
@@ -275,21 +275,21 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	cache_id = id;
 	lockreg_d = cache_base + L2X0_LOCKDOWN_WAY_D_BASE;
 	lockreg_i = cache_base + L2X0_LOCKDOWN_WAY_I_BASE;
-    
+
 	if (L2X0_CACHE_ID_PART_L310 == (cache_id & L2X0_CACHE_ID_PART_MASK)) {
 		nr_lockregs = 8;
 	} else {
 		printk("Unknown cache ID!\n");
 		nr_lockregs = 1;
 	}
-	
+
 	mutex_init(&actlr_mutex);
 	mutex_init(&l2x0_prefetch_mutex);
 	mutex_init(&lockdown_proc);
 	mutex_init(&debug_mutex);
 	raw_spin_lock_init(&cache_lock);
 	raw_spin_lock_init(&prefetch_lock);
-	
+
 	test_lockdown(NULL);
 }
 
@@ -298,13 +298,13 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 {
 	int ret = 0, i;
 	unsigned long flags;
-	
+
 	mutex_lock(&lockdown_proc);
-	
+
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		printk("Way-partition settings:\n");
 		for (i = 0; i < 9; i++) {
@@ -317,7 +317,7 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 				       i * L2X0_LOCKDOWN_STRIDE);
 		}
 	}
-	
+
 	local_irq_save(flags);
 	print_lockdown_registers(smp_processor_id());
 	l2c310_flush_all();
@@ -332,13 +332,13 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 {
 	int ret = 0, i;
 	unsigned long flags;
-	
+
 	mutex_lock(&lockdown_proc);
-	
+
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 	if (write && lock_all == 1) {
 		for (i = 0; i < nr_lockregs; i++) {
 			writel_relaxed(0xFFFF, cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
@@ -346,7 +346,7 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 			writel_relaxed(0xFFFF, cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
 				       i * L2X0_LOCKDOWN_STRIDE);
 		}
-/*		
+/*
 		for (i = 0; i < nr_lockregs;  i++) {
 			barrier();
 			mem_lock(LOCK_ALL, i);
@@ -354,7 +354,7 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 			//writel_relaxed(nr_unlocked_way[0], ld_d_reg(i));
 			//writel_relaxed(nr_unlocked_way[0], ld_i_reg(i));
 		}
-*/		
+*/
 	}
 	if (write && lock_all == 0) {
 		for (i = 0; i < nr_lockregs; i++) {
@@ -380,7 +380,7 @@ void cache_lockdown(u32 lock_val, int cpu)
 	__asm__ __volatile__ (
 "	str	%[lockval], [%[dcachereg]]\n"
 "	str	%[lockval], [%[icachereg]]\n"
-	: 
+	:
 	: [dcachereg] "r" (ld_d_reg(cpu)),
 	  [icachereg] "r" (ld_i_reg(cpu)),
 	  [lockval] "r" (lock_val)
@@ -391,7 +391,7 @@ void do_partition(enum crit_level lv, int cpu)
 {
 	u32 regs;
 	unsigned long flags;
-	
+
 	if (lock_all || !use_part)
 		return;
 	raw_spin_lock_irqsave(&cache_lock, flags);
@@ -425,7 +425,7 @@ void do_partition(enum crit_level lv, int cpu)
 void lock_cache(int cpu, u32 val)
 {
 	unsigned long flags;
-	
+
 	local_irq_save(flags);
 	if (val != 0xffffffff) {
 		writel_relaxed(val, cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
@@ -445,13 +445,13 @@ int use_part_proc_handler(struct ctl_table *table, int write, void __user *buffe
 		size_t *lenp, loff_t *ppos)
 {
 	int ret = 0;
-	
+
 	mutex_lock(&lockdown_proc);
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 
 	printk("USE_PART HANDLER = %d\n", use_part);
 
@@ -464,13 +464,13 @@ int os_isolation_proc_handler(struct ctl_table *table, int write, void __user *b
 		size_t *lenp, loff_t *ppos)
 {
 	int ret = 0;
-	
+
 	mutex_lock(&lockdown_proc);
-	
+
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 
 	printk("OS_ISOLATION HANDLER = %d\n", os_isolation);
 
@@ -483,13 +483,13 @@ int lockdown_reg_handler(struct ctl_table *table, int write, void __user *buffer
 		size_t *lenp, loff_t *ppos)
 {
 	int ret = 0, i;
-	
+
 	mutex_lock(&lockdown_proc);
-	
+
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		for (i = 0; i < nr_lockregs; i++) {
 			writel_relaxed(lockdown_reg[i], cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
@@ -508,13 +508,13 @@ int lockdown_global_handler(struct ctl_table *table, int write, void __user *buf
 		size_t *lenp, loff_t *ppos)
 {
 	int ret = 0, i;
-	
+
 	mutex_lock(&lockdown_proc);
-	
+
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		for (i = 0; i < nr_lockregs; i++) {
 			writel_relaxed(lockdown_reg[8], cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
@@ -534,7 +534,7 @@ void inline enter_irq_mode(void)
 	int cpu = smp_processor_id();
 
 	if (os_isolation == 0)
-		return;	
+		return;
 	prev_lockdown_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
 	prev_lockdown_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
 	writel_relaxed(way_partitions[8], ld_i_reg(cpu));
@@ -547,9 +547,9 @@ void inline exit_irq_mode(void)
 
 	if (os_isolation == 0)
 		return;
-	
+
 	writel_relaxed(prev_lockdown_i_reg[cpu], ld_i_reg(cpu));
-	writel_relaxed(prev_lockdown_d_reg[cpu], ld_d_reg(cpu));	
+	writel_relaxed(prev_lockdown_d_reg[cpu], ld_d_reg(cpu));
 }
 
 /* Operate on the Cortex-A9's ACTLR register */
@@ -685,18 +685,18 @@ extern void *msgvaddr;
 int do_measure(void) {
 	lt_t t1, t2;
 	int i;
-	
+
 	barrier();
 	t1 = litmus_clock();
 	color_read_in_mem_lock(0xFFFF7FFF, 0xFFFF8000, msgvaddr, msgvaddr + 65536);
 	t2 = litmus_clock() - t1;
 	barrier();
-	
+
 	for (i = 0; i < 8; i++) {
 		cache_lockdown(0xFFFF8000, i);
 	}
 	printk("mem read time %lld\n", t2);
-	
+
 	return 0;
 }
 
@@ -704,9 +704,7 @@ int debug_test_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret;
-	
-	//mutex_lock(&debug_mutex);
-	//ret = proc_dointvec(table, write, buffer, lenp, ppos);
+
 	if (write) {
 		ret = do_measure();
 	}
@@ -720,7 +718,7 @@ int do_perf_test_proc_handler(struct ctl_table *table, int write,
 
 int setup_flusher_proc_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
-		
+
 static struct ctl_table cache_table[] =
 {
 	{
@@ -731,7 +729,7 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(way_partitions[0]),
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
-	},	
+	},
 	{
 		.procname	= "C0_LB_way",
 		.mode		= 0666,
@@ -740,7 +738,7 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(way_partitions[1]),
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
-	},	
+	},
 	{
 		.procname	= "C1_LA_way",
 		.mode		= 0666,
@@ -794,7 +792,7 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(way_partitions[7]),
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
-	},	
+	},
 	{
 		.procname	= "Call_LC_way",
 		.mode		= 0666,
@@ -803,7 +801,7 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(way_partitions[8]),
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
-	},		
+	},
 	{
 		.procname	= "lock_all",
 		.mode		= 0666,
@@ -1088,10 +1086,10 @@ void flush_cache(int all)
 {
 	int way, color, cpu;
 	unsigned long flags;
-	
+
 	raw_spin_lock_irqsave(&cache_lock, flags);
 	cpu = raw_smp_processor_id();
-	
+
 	prev_lbm_i_reg[cpu] = readl_relaxed(ld_i_reg(cpu));
 	prev_lbm_d_reg[cpu] = readl_relaxed(ld_d_reg(cpu));
 	for (way=0;way<MAX_NR_WAYS;way++) {
@@ -1122,16 +1120,16 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 	int numlines = size * CACHELINES_IN_1KB;
 	int next, sum = 0, ran;
 	unsigned long flags;
-	
+
 	get_random_bytes(&ran, sizeof(int));
 	next = ran % ((size*1024)/sizeof(cacheline_t));
-	
+
 	//preempt_disable();
 	if (type == 1) {
 		int i, j;
 		color_read_in_mem_lock(0x0000FFF0, 0x0000000f, (void*)src, (void*)src + size*1024);
 		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
-		
+
 		local_irq_save(flags);
 		t1 = litmus_clock();
 		for (i = 0; i < numlines; i++) {
@@ -1139,7 +1137,7 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 			for (j = 1; j < INTS_IN_CACHELINE; j++) {
 				//dst[next].line[j] = src[next].line[j]; // read
 				src[next].line[j] = dst[next].line[j]; // write
-			}			
+			}
 		}
 		t2 = litmus_clock();
 		local_irq_restore(flags);
@@ -1157,7 +1155,7 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 			for (j = 1; j < INTS_IN_CACHELINE; j++) {
 				//dst[next].line[j] = src[next].line[j]; //read
 				src[next].line[j] = dst[next].line[j]; //write
-			}			
+			}
 		}
 		t2 = litmus_clock();
 		local_irq_restore(flags);
@@ -1181,20 +1179,20 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 	int numlines = size * CACHELINES_IN_1KB;
 	int sum = 0;
 	unsigned long flags;
-	
+
 	//preempt_disable();
 	if (type == 1) {
 		int i, j;
 		color_read_in_mem_lock(0x0000FFF0, 0x0000000f, (void*)src, (void*)src + size*1024);
 		color_read_in_mem_lock(0x0000FF0F, 0x0000000f, (void*)dst, (void*)dst + size*1024);
-		
+
 		local_irq_save(flags);
 		t1 = litmus_clock();
 		for (i = 0; i < numlines; i++) {
 			for (j = 0; j < INTS_IN_CACHELINE; j++) {
 				//dst[i].line[j] = src[i].line[j]; // read
 				src[i].line[j] = dst[i].line[j]; // write
-			}			
+			}
 		}
 		t2 = litmus_clock();
 		local_irq_restore(flags);
@@ -1211,7 +1209,7 @@ asmlinkage long sys_run_test(int type, int size, cacheline_t *src, cacheline_t *
 			for (j = 0; j < INTS_IN_CACHELINE; j++) {
 				//dst[i].line[j] = src[i].line[j]; //read
 				src[i].line[j] = dst[i].line[j]; //write
-			}			
+			}
 		}
 		t2 = litmus_clock();
 		local_irq_restore(flags);
@@ -1233,11 +1231,11 @@ asmlinkage long sys_lock_buffer(void* vaddr, size_t size, u32 lock_way, u32 unlo
 	long ret = 0;
 	int i;
 	u32 lock_val, unlock_val;
-	
+
 	lock_val = ~lock_way & 0x0000ffff;
 	unlock_val = ~unlock_way & 0x0000ffff;
 	color_read_in_mem_lock(lock_val, unlock_val, (void*)vaddr, (void*)vaddr + size);
-	
+
 	return ret;
 }
 
@@ -1270,7 +1268,7 @@ static int perf_test(void) {
 		printk(KERN_WARNING "No memory\n");
 		return -ENOMEM;
 	}
-	
+
 	vaddr = page_address(page);
 	if (!vaddr)
 		printk(KERN_WARNING "%s: vaddr is null\n", __FUNCTION__);
@@ -1293,60 +1291,6 @@ static int perf_test(void) {
 		}
 		printk("Size %d, average for memcpy %lld\n", i, t2>>9);
 	}
-/*	
-	getnstimeofday(&before);
-	barrier();
-	for (i = 0; i < TRIALS; i++) {
-		color_flush_page(vaddr, PAGE_SIZE*num_pages);
-	}
-	barrier();
-	getnstimeofday(&after);
-	time = update_timeval(before, after);
-	printk("Average for flushes without re-reading: %ld\n", time / TRIALS);
-	flush_time = time / TRIALS;
-
-	color_read_in_mem(nr_unlocked_way[2], UNLOCK_ALL, vaddr, vaddr + PAGE_SIZE*num_pages);
-	
-	barrier();
-	getnstimeofday(&before);
-	barrier();
-	for (i = 0; i < TRIALS; i++) {
-		color_read_in_mem(nr_unlocked_way[2], UNLOCK_ALL, vaddr, vaddr + PAGE_SIZE*num_pages);
-	}
-	barrier();
-	getnstimeofday(&after);
-	time = update_timeval(before, after);
-	printk("Average for read from cache: %ld\n", time / TRIALS);
-
-	getnstimeofday(&before);
-	barrier();
-	for (i = 0; i < TRIALS; i++) {
-		color_read_in_mem(nr_unlocked_way[2], UNLOCK_ALL, vaddr, vaddr + PAGE_SIZE*num_pages);
-		color_flush_page(vaddr, PAGE_SIZE*num_pages);
-	}
-	barrier();
-	getnstimeofday(&after);
-	time = update_timeval(before, after);
-	printk("Average for read from mem: %ld (%ld)\n", time / TRIALS - flush_time, time / TRIALS);
-
-	// write in locked way
-	color_read_in_mem_lock(nr_unlocked_way[2], LOCK_ALL, vaddr, vaddr + PAGE_SIZE*num_pages);
-	for (i = 0; i < PAGE_SIZE*num_pages/sizeof(u32); i++) {
-		data[i] = i%63353;
-	}
-	// read
-	barrier();
-	getnstimeofday(&before);
-	barrier();
-	for (i = 0; i < TRIALS; i++) {
-		color_read_in_mem(unlocked_way[0], UNLOCK_ALL, vaddr, vaddr + PAGE_SIZE*num_pages);
-	}
-	barrier();
-	getnstimeofday(&after);
-	time = update_timeval(before, after);
-	printk("Average for read in after write: %ld\n", time / TRIALS);
-	
-*/	
 	//free_page((unsigned long)vaddr);
 	free_pages((unsigned long)vaddr, order);
 	free_pages((unsigned long)vaddr2, order);
@@ -1374,13 +1318,13 @@ int setup_flusher_proc_handler(struct ctl_table *table, int write,
 	if (write && flusher_pages == NULL) {
 		ret = setup_flusher_array();
 		printk(KERN_INFO "setup flusher return: %d\n", ret);
-	
+
 	}
 	else if (flusher_pages) {
 		printk(KERN_INFO "flusher_pages is already set!\n");
 		ret = 0;
 	}
-	
+
 	return ret;
 }
 
@@ -1400,7 +1344,7 @@ static int __init litmus_sysctl_init(void)
 
 	way_partition_min = 0x00000000;
 	way_partition_max = 0x0000FFFF;
-	
+
 out:
 	return ret;
 }

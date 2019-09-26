@@ -1437,9 +1437,7 @@ static int uvc_v4l2_mmap(struct file *file, struct vm_area_struct *vma)
 	struct uvc_streaming *stream = handle->stream;
 
 	uvc_trace(UVC_TRACE_CALLS, "uvc_v4l2_mmap\n");
-#if 0
-	printk(KERN_INFO "uvc_mmap entry point\n");
-#endif
+
 	return uvc_queue_mmap(&stream->queue, vma);
 }
 

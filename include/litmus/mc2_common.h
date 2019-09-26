@@ -1,7 +1,7 @@
 /*
  * MC^2 common data structures
  */
- 
+
 #ifndef __UNC_MC2_COMMON_H__
 #define __UNC_MC2_COMMON_H__
 
@@ -25,7 +25,7 @@ struct mc2_task {
 
 long mc2_task_client_init(struct task_client *tc, struct mc2_task *mc2_param, struct task_struct *tsk,
 							struct reservation *res);
-	
+
 #endif /* __KERNEL__ */
 
 #endif

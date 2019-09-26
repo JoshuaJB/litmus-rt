@@ -258,7 +258,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		}
 	}
 #endif
-	
+
 	/* If a task blocks we have no choice but to reschedule.
 	 */
 	if (blocks)

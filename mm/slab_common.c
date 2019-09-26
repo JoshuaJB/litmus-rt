@@ -712,7 +712,7 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name, size_t size,
 	create_boot_cache(s, name, size, flags);
 
 	list_add(&s->list, &slab_caches);
-	
+
 	s->refcount = 1;
 	return s;
 }
@@ -722,7 +722,6 @@ EXPORT_SYMBOL(kmalloc_caches);
 
 /* for per-cpu kmalloc objects */
 struct kmem_cache *hc_kmalloc_caches[NR_CPUS][KMALLOC_SHIFT_HIGH + 1];
-//struct kmem_cache *hc_kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
 EXPORT_SYMBOL(hc_kmalloc_caches);
 
 #ifdef CONFIG_ZONE_DMA
@@ -874,18 +873,18 @@ void __init create_kmalloc_caches(unsigned long flags)
 		}
 	}
 
-/* per-cpu kmalloc caches */
+	/* per-cpu kmalloc caches */
 	printk(KERN_INFO "SLAB_STATE = %d\n", slab_state);
 	for (cpu = 0; cpu < NR_CPUS; cpu++) {
 		for (i = KMALLOC_SHIFT_LOW; i <= KMALLOC_SHIFT_HIGH; i++) {
 			char *n;
 			n = kasprintf(GFP_NOWAIT, "cpu%01d-kmalloc-%d", cpu, kmalloc_size(i));
-			
+
 			printk(KERN_INFO "HC-KMALLOC i = %d\n", i);
 			hc_kmalloc_caches[cpu][i] = create_kmalloc_cache(n, 1 << i, SLAB_NO_MERGE|flags);
 			hc_kmalloc_caches[cpu][i]->cpu_id = cpu;
 			printk(KERN_INFO "CPU%d HC-KMALLOC-%d CACHE CREATED\n", cpu, 1<<i);
-			printk(KERN_INFO "HC-KMALLOC-%d slabs freelist=%p, pages=%p, partial=%p\n", 1<<i, hc_kmalloc_caches[cpu][i]->cpu_slab->freelist, hc_kmalloc_caches[cpu][i]->cpu_slab->page,hc_kmalloc_caches[cpu][i]->cpu_slab->partial);		
+			printk(KERN_INFO "HC-KMALLOC-%d slabs freelist=%p, pages=%p, partial=%p\n", 1<<i, hc_kmalloc_caches[cpu][i]->cpu_slab->freelist, hc_kmalloc_caches[cpu][i]->cpu_slab->page,hc_kmalloc_caches[cpu][i]->cpu_slab->partial);
 
 			if (KMALLOC_MIN_SIZE <= 32 && !hc_kmalloc_caches[cpu][1] && i == 6) {
 				char *nm;

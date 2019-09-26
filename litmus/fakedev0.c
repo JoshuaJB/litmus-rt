@@ -15,20 +15,20 @@
 #define FAKEDEV0_NAME        "litmus/fakedev0"
 
 #define NUM_BANKS	8
-#define BANK_MASK	0x38000000     
+#define BANK_MASK	0x38000000
 #define BANK_SHIFT  27
 
 #define NUM_COLORS	16
-#define CACHE_MASK  0x0000f000      
+#define CACHE_MASK  0x0000f000
 #define CACHE_SHIFT 12
 
-/* Decoding page color, 0~15 */ 
+/* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {
 	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
 }
 
-/* Decoding page bank number, 0~7 */ 
+/* Decoding page bank number, 0~7 */
 static inline unsigned int page_bank(struct page *page)
 {
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
@@ -48,7 +48,7 @@ int litmus_fakedev0_vm_fault(struct vm_area_struct* vma,
 	/* modeled after SG DMA video4linux, but without DMA. */
 	/* (see drivers/media/video/videobuf-dma-sg.c) */
 	struct page *page;
-	
+
 	page = alloc_page(GFP_USER|GFP_COLOR|GFP_CPU1);
 	if (!page)
 		return VM_FAULT_OOM;

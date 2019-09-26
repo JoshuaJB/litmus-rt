@@ -29,7 +29,7 @@ static void periodic_polling_client_arrives(
 				instances =  div64_u64(tmp, pres->period);
 				res->next_replenishment = res->env->time_zero + instances * pres->period;
 			}
-				
+
 			TRACE("ENV_TIME_ZERO %llu\n", res->env->time_zero);
 			TRACE("pol-res: R%d activate tmp=%llu instances=%llu period=%llu nextrp=%llu cur=%llu\n",
 				res->id, tmp, instances, pres->period, res->next_replenishment,
