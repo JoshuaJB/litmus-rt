@@ -91,7 +91,7 @@ static inline unsigned int page_bank(struct page *page)
 	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
 }
 
-#define is_high_criticality_partition(x) x == NR_CPUS
+#define is_high_criticality_partition(x) x < NR_CPUS
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
