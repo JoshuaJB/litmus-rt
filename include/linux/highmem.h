@@ -8,6 +8,8 @@
 #include <linux/uaccess.h>
 #include <linux/hardirq.h>
 
+#include <litmus/mc2_common.h>
+
 #include <asm/cacheflush.h>
 
 #ifndef ARCH_HAS_FLUSH_ANON_PAGE
@@ -179,7 +181,13 @@ static inline struct page *
 alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
 					unsigned long vaddr)
 {
-	return __alloc_zeroed_user_highpage(__GFP_MOVABLE, vma, vaddr);
+	// This is only called by do_anonymous_page and do_wp_page, two of the biggest
+	// ways by which a process page fault is handled. We want to make sure that these
+	// pages are mapped appropriately for the process.
+	if (current->rt_param.mc2_data != NULL && current->rt_param.mc2_data->crit != CRIT_LEVEL_C)
+		return __alloc_zeroed_user_highpage(__GFP_MOVABLE | __GFP_COLOR, vma, vaddr);
+	else
+		return __alloc_zeroed_user_highpage(__GFP_MOVABLE, vma, vaddr);
 }
 
 static inline void clear_highpage(struct page *page)
