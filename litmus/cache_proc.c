@@ -161,7 +161,6 @@ static int l2_data_prefetch_proc;
 static int os_isolation;
 static int use_part;
 
-static u32 debug_test_val;
 struct mutex debug_mutex;
 
 u32 lockdown_reg[9] = {
@@ -703,7 +702,7 @@ int do_measure(void) {
 int debug_test_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret;
+	int ret = 0;
 
 	if (write) {
 		ret = do_measure();
@@ -998,17 +997,6 @@ u32 color_read_in_mem_lock(u32 lock_val, u32 unlock_val, void *start, void *end)
 	return v;
 }
 
-static long update_timeval(struct timespec lhs, struct timespec rhs)
-{
-	long val;
-	struct timespec ts;
-
-	ts = timespec_sub(rhs, lhs);
-	val = ts.tv_sec*NSEC_PER_SEC + ts.tv_nsec;
-
-	return val;
-}
-
 extern void v7_flush_kern_dcache_area(void *, size_t);
 extern void v7_flush_kern_cache_all(void);
 /*
@@ -1229,7 +1217,6 @@ asmlinkage long sys_lock_buffer(void* vaddr, size_t size, u32 lock_way, u32 unlo
 {
 	/* size is in bytes */
 	long ret = 0;
-	int i;
 	u32 lock_val, unlock_val;
 
 	lock_val = ~lock_way & 0x0000ffff;
@@ -1242,11 +1229,9 @@ asmlinkage long sys_lock_buffer(void* vaddr, size_t size, u32 lock_way, u32 unlo
 #define TRIALS 1000
 
 static int perf_test(void) {
-	struct timespec before, after;
 	struct page *page, *page2;
 	void *vaddr, *vaddr2;
 	u32 *data, *data2;
-	long time, flush_time;
 	int i, n, num_pages = 1;
 	unsigned int order = 2;
 	lt_t t1 = 0, t2 = 0;
@@ -1256,7 +1241,6 @@ static int perf_test(void) {
 	}
 
 	printk("Number of pages: %d\n", num_pages);
-	//page = alloc_page(__GFP_MOVABLE);
 	page = alloc_pages(__GFP_MOVABLE, order);
 	if (!page) {
 		printk(KERN_WARNING "No memory\n");

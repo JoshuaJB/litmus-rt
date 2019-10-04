@@ -14,14 +14,6 @@
 
 #define FAKEDEV0_NAME        "litmus/fakedev0"
 
-#define NUM_BANKS	8
-#define BANK_MASK	0x38000000
-#define BANK_SHIFT  27
-
-#define NUM_COLORS	16
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-
 /* Decoding page color, 0~15 */
 static inline unsigned int page_color(struct page *page)
 {

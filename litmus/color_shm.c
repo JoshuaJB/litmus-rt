@@ -17,8 +17,6 @@
  * Refer Documentation/devices.txt */
 #define SHM_MAJOR			240
 #define MAX_COLORED_PAGE	256
-#define NUM_BANKS			8
-#define NUM_COLORS			16
 
 static struct mutex dev_lock;
 static int bypass_cache;
@@ -73,7 +71,6 @@ static int do_map_colored_page(struct vm_area_struct *vma,
 		const unsigned long color_no)
 {
 	int err = 0;
-	unsigned long offset = 2048;
 
 	struct page *page = get_colored_page(color_no);
 
@@ -90,8 +87,8 @@ static int do_map_colored_page(struct vm_area_struct *vma,
 	printk(KERN_INFO "vm_start: %lu vm_end: %lu\n",
 			vma->vm_start, vma->vm_end);
 
-	printk(KERN_INFO "inserting page (pa: 0x%lx) at vaddr: 0x%lx  "
-			"flags: 0x%lx  prot: 0x%lx\n",
+	printk(KERN_INFO "inserting page (pa: 0x%x) at vaddr: 0x%lx  "
+			"flags: 0x%lx  prot: 0x%x\n",
 			page_to_phys(page), addr,
 			vma->vm_flags, pgprot_val(vma->vm_page_prot));
 
@@ -225,7 +222,7 @@ static int litmus_color_shm_vm_fault(struct vm_area_struct *vma,
 	TRACE_CUR("flags=0x%lx (off:%ld)\n", vma->vm_flags, vmf->pgoff);
 	printk(KERN_INFO "flags=0x%lx (off:%ld)\n", vma->vm_flags, vmf->pgoff);
 
-	printk(KERN_INFO "Page fault in color ctrl page! prot=0x%lx\n", pgprot_val(vma->vm_page_prot));
+	printk(KERN_INFO "Page fault in color ctrl page! prot=0x%x\n", pgprot_val(vma->vm_page_prot));
 
 	return VM_FAULT_SIGBUS;
 }
@@ -301,7 +298,7 @@ static long litmus_color_shm_ioctl(struct file *filp, unsigned int cmd, unsigned
 
 			color_offset.offset = color_off.offset;
 			color_offset.lock = color_off.lock;
-			printk(KERN_INFO "OFFSET = %x\n", color_offset.offset);
+			printk(KERN_INFO "OFFSET = %lx\n", color_offset.offset);
 			printk(KERN_INFO "LOCK   = %d\n", color_offset.lock);
 			err = 0;
 			break;
@@ -331,7 +328,7 @@ struct mutex bypass_mutex;
 int bypass_proc_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret, mode;
+	int ret;
 
 	mutex_lock(&bypass_mutex);
 	ret = proc_dointvec(table, write, buffer, lenp, ppos);

@@ -33,18 +33,13 @@
  * coalesce naturally under reasonable reclaim pressure and those which
  * will not.
  */
-#define PAGE_ALLOC_COSTLY_ORDER 3
+#define PAGE_ALLOC_COSTLY_ORDER 2
 
 /* For page coloring - This address decoding is used in imx6-sabresd
  * platform without bank interleaving.
  */
-#define BANK_MASK				0x38000000
-#define BANK_SHIFT 				27
-#define CACHE_MASK 				0x0000f000
-#define CACHE_SHIFT				12
 #define MAX_NUM_COLOR			16
 #define MAX_NUM_BANK			8
-//#define MAX_PARTITIONED_ORDER	3
 #define MAX_PARTITIONED_ORDER	11
 #define MAX_CONTIG_ORDER		3
 

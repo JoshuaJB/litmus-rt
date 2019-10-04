@@ -115,26 +115,6 @@
  * 			the fast path and disables lockless freelists.
  */
 
-// This Address Decoding is used in imx6-sabredsd platform
-#define BANK_MASK  0x38000000
-#define BANK_SHIFT  27
-
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-#define MAX_COLOR_NODE	128
-
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-
 static inline int kmem_cache_debug(struct kmem_cache *s)
 {
 #ifdef CONFIG_SLUB_DEBUG
@@ -2791,8 +2771,7 @@ EXPORT_SYMBOL(kmem_cache_free);
  * take the list_lock.
  */
 static int slub_min_order;
-//static int slub_max_order = PAGE_ALLOC_COSTLY_ORDER;
-static int slub_max_order = 2;
+static int slub_max_order = PAGE_ALLOC_COSTLY_ORDER;
 static int slub_min_objects;
 
 /*

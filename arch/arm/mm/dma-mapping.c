@@ -340,24 +340,6 @@ void __init init_dma_coherent_pool_size(unsigned long size)
 		atomic_pool_size = size;
 }
 
-#define BANK_MASK  0x38000000
-#define BANK_SHIFT  27
-
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-
 /*
  * Initialise the coherent pool for atomic allocations.
  */

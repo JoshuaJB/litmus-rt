@@ -670,7 +670,6 @@ static int safe_to_schedule(struct task_struct* t, int cpu)
 static struct task_struct* pfair_schedule(struct task_struct * prev)
 {
 	struct pfair_state* state = this_cpu_ptr(&pfair_state);
-	struct pfair_cluster* cluster = cpu_cluster(state);
 	int blocks, completion, out_of_time;
 	struct task_struct* next = NULL;
 

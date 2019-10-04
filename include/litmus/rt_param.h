@@ -343,7 +343,7 @@ struct rt_param {
 	struct control_page * ctrl_page;
 
 	/* Mixed-criticality specific data */
-	struct mc2_task* mc2_data;
+	struct mc2_task * mc2_data;
 	unsigned long addr_ctrl_page;
 };
 

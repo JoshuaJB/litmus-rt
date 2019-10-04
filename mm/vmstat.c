@@ -1243,26 +1243,10 @@ static const struct file_operations pagetypeinfo_file_ops = {
 	.release	= seq_release,
 };
 
-#define BANK_MASK  0x38000000
-#define BANK_SHIFT  27
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
 static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 							struct zone *zone)
 {
 	int i;
-	int mtype;
 
 	seq_printf(m, "Node %d, zone %8s", pgdat->node_id, zone->name);
 	seq_printf(m,

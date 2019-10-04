@@ -638,7 +638,7 @@ static inline void post_schedule(struct task_struct *next, int cpu)
  */
 static struct task_struct* mc2_schedule(struct task_struct * prev)
 {
-	int np, blocks, exists, cpu; //preempt, to_schedule;
+	int np, blocks, exists;
 	/* next == NULL means "schedule background work". */
 	lt_t now = litmus_clock();
 	struct mc2_cpu_state *state = local_cpu_state();

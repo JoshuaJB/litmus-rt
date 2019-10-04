@@ -72,25 +72,6 @@
 #include "internal.h"
 
 // This Address Decoding is used in imx6-sabredsd platform
-#define BANK_MASK  0x38000000
-#define BANK_SHIFT  27
-
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-#define MAX_COLOR_NODE	128
-
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-
 #define is_high_criticality_partition(x) x < NR_CPUS
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */

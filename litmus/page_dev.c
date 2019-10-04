@@ -8,15 +8,6 @@
 #include <litmus/page_dev.h>
 #include <litmus/debug_trace.h>
 
-// This Address Decoding is used in imx6-sabredsd platform
-#define NUM_BANKS	8
-#define BANK_MASK	0x38000000
-#define BANK_SHIFT  27
-
-#define NUM_COLORS	16
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-
 #define NR_LLC_PARTITIONS		9
 #define NR_DRAM_PARTITIONS		5
 
@@ -44,18 +35,6 @@ unsigned int dram_partition[NR_DRAM_PARTITIONS] = {
 	0x00000080,
 	0x0000000f,
 };
-
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
 
 int bank_to_partition(unsigned int bank)
 {

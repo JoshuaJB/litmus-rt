@@ -21,15 +21,7 @@
 
 #define LITMUS_LOCKDEP_NAME_MAX_LEN 50
 
-// This Address Decoding is used in imx6-sabredsd platform
-#define BANK_MASK  0x38000000
-#define BANK_SHIFT  27
-#define CACHE_MASK  0x0000f000
-#define CACHE_SHIFT 12
-
 #define PAGES_PER_COLOR 2000
-#define NUM_BANKS	8
-#define NUM_COLORS	16
 
 unsigned int NUM_PAGE_LIST;  //8*16
 
@@ -236,25 +228,6 @@ static inline unsigned int page_list_index(struct page *page)
     return idx;
 }
 
-
-
-/*
- * It is used to determine the smallest number of page lists.
- */
-static unsigned long smallest_nr_pages(void)
-{
-	unsigned long i, min_pages;
-	struct color_group *cgroup;
-	cgroup = &color_groups[16*2];
-	min_pages =atomic_read(&cgroup->nr_pages);
-	for (i = 16*2; i < NUM_PAGE_LIST; ++i) {
-		cgroup = &color_groups[i];
-		if (atomic_read(&cgroup->nr_pages) < min_pages)
-			min_pages = atomic_read(&cgroup->nr_pages);
-	}
-	return min_pages;
-}
-
 static void show_nr_pages(void)
 {
 	unsigned long i;
@@ -429,52 +402,6 @@ void reclaim_page(struct page *page)
 	printk("Reclaimed page(%ld) = color %x, bank %x, [color] =%d \n", color, page_color(page), page_bank(page), atomic_read(&color_groups[color].nr_pages));
 }
 
-
-/*
- * Initialize the numbers of banks and cache colors
- */
-static void __init init_variables(void)
-{
-	number_banks = counting_one_set(BANK_MASK);
-	number_banks = two_exp(number_banks);
-
-	number_cachecolors = counting_one_set(CACHE_MASK);
-	number_cachecolors = two_exp(number_cachecolors);
-	NUM_PAGE_LIST = number_banks * number_cachecolors;
-        printk(KERN_WARNING "number of banks = %d, number of cachecolors=%d\n", number_banks, number_cachecolors);
-	mutex_init(&void_lockdown_proc);
-	spin_lock_init(&reclaim_lock);
-
-}
-
-
-/*
- * Initialize the page pool
- */
-static int __init init_color_groups(void)
-{
-	struct color_group *cgroup;
-	unsigned long i;
-	int err = 0;
-
-        printk("NUM_PAGE_LIST = %d\n", NUM_PAGE_LIST);
-        color_groups = kmalloc(NUM_PAGE_LIST *sizeof(struct color_group), GFP_KERNEL);
-
-	if (!color_groups) {
-		printk(KERN_WARNING "Could not allocate color groups.\n");
-		err = -ENOMEM;
-	}else{
-
-		for (i = 0; i < NUM_PAGE_LIST; ++i) {
-			cgroup = &color_groups[i];
-			atomic_set(&cgroup->nr_pages, 0);
-			INIT_LIST_HEAD(&cgroup->list);
-			spin_lock_init(&cgroup->lock);
-		}
-	}
-        return err;
-}
-
 int set_partition_handler(struct ctl_table *table, int write, void __user *buffer,
 		size_t *lenp, loff_t *ppos)
 {
@@ -484,12 +411,11 @@ int set_partition_handler(struct ctl_table *table, int write, void __user *buffe
 	if (ret)
 		goto out;
 	if (write) {
-            printk("New set Partition : \n");
-	    for(i =0;i <9;i++)
-            {
-                set_index[i] = 0;
-                printk("set[%d] = %x \n", i, set_partition[i]);
-            }
+		printk("New set Partition : \n");
+		for (i =0;i <9;i++) {
+			set_index[i] = 0;
+			printk("set[%d] = %x \n", i, set_partition[i]);
+		}
 	}
 out:
 	mutex_unlock(&void_lockdown_proc);
@@ -553,11 +479,9 @@ out:
  */
 static int __init litmus_color_init(void)
 {
-	int err=0;
 	printk("Init bankproc.c\n");
 	printk(KERN_INFO "Registering LITMUS^RT color and bank proc.\n");
-out:
-	return err;
+	return 0;
 }
 
 module_init(litmus_color_init);
