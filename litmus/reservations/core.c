@@ -2,7 +2,7 @@
 #include <linux/slab.h>
 
 #include <litmus/litmus.h>
-#include <litmus/reservation.h>
+#include <litmus/reservations/reservation.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 

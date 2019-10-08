@@ -111,6 +111,7 @@ struct reservation {
 
 	reservation_state_t state;
 	unsigned int id;
+	unsigned int kind;
 
 	/* exact meaning defined by impl. */
 	lt_t priority;

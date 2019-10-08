@@ -24,8 +24,9 @@
 #include <litmus/trace.h>
 
 #include <litmus/mc2_common.h>
-#include <litmus/reservation.h>
-#include <litmus/polling_reservations.h>
+#include <litmus/reservations/reservation.h>
+#include <litmus/reservations/polling.h>
+#include <litmus/reservations/table-driven.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 

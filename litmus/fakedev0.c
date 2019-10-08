@@ -14,18 +14,6 @@
 
 #define FAKEDEV0_NAME        "litmus/fakedev0"
 
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-
 void litmus_fakedev0_vm_open(struct vm_area_struct *vma)
 {
 }

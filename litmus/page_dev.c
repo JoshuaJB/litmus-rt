@@ -7,6 +7,7 @@
 
 #include <litmus/page_dev.h>
 #include <litmus/debug_trace.h>
+#include <linux/mm.h>
 
 #define NR_LLC_PARTITIONS		9
 #define NR_DRAM_PARTITIONS		5

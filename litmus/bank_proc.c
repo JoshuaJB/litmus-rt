@@ -208,18 +208,6 @@ static inline unsigned int get_next_index(unsigned long node, unsigned int curre
 	return bank_ret * NUM_COLORS + color_ret;
 }
 
-/* Decoding page color, 0~15 */
-static inline unsigned int page_color(struct page *page)
-{
-	return ((page_to_phys(page)& CACHE_MASK) >> CACHE_SHIFT);
-}
-
-/* Decoding page bank number, 0~7 */
-static inline unsigned int page_bank(struct page *page)
-{
-	return ((page_to_phys(page)& BANK_MASK) >> BANK_SHIFT);
-}
-
 static inline unsigned int page_list_index(struct page *page)
 {
     unsigned int idx;

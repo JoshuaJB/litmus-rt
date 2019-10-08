@@ -19,7 +19,7 @@ struct mc2_task {
 
 #ifdef __KERNEL__
 
-#include <litmus/reservation.h>
+#include <litmus/reservations/reservation.h>
 
 #define tsk_mc2_data(t)		(tsk_rt(t)->mc2_data)
 
