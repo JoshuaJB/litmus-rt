@@ -8,7 +8,7 @@
 
 void reservation_init(struct reservation *res)
 {
-	memset(res, sizeof(*res), 0);
+	memset(res, 0, sizeof(*res));
 	res->state = RESERVATION_INACTIVE;
 	INIT_LIST_HEAD(&res->clients);
 }
@@ -32,6 +32,34 @@ struct task_struct* default_dispatch_client(
 	return NULL;
 }
 
+void common_drain_budget(
+	struct reservation *res,
+	lt_t how_much)
+{
+	if (how_much >= res->cur_budget)
+		res->cur_budget = 0;
+	else
+		res->cur_budget -= how_much;
+
+	res->budget_consumed += how_much;
+	res->budget_consumed_total += how_much;
+
+	switch (res->state) {
+		case RESERVATION_DEPLETED:
+		case RESERVATION_INACTIVE:
+			BUG();
+			break;
+
+		case RESERVATION_ACTIVE_IDLE:
+		case RESERVATION_ACTIVE:
+			if (!res->cur_budget) {
+				res->env->change_state(res->env, res,
+					RESERVATION_DEPLETED);
+			} /* else: stay in current state */
+			break;
+	}
+}
+
 static struct task_struct * task_client_dispatch(struct reservation_client *client)
 {
 	struct task_client *tc = container_of(client, struct task_client, client);
@@ -41,7 +69,7 @@ static struct task_struct * task_client_dispatch(struct reservation_client *clie
 void task_client_init(struct task_client *tc, struct task_struct *tsk,
 	struct reservation *res)
 {
-	memset(&tc->client, sizeof(tc->client), 0);
+	memset(&tc->client, 0, sizeof(tc->client));
 	tc->client.dispatch = task_client_dispatch;
 	tc->client.reservation = res;
 	tc->task = tsk;
@@ -51,7 +79,6 @@ static void sup_scheduler_update_at(
 	struct sup_reservation_environment* sup_env,
 	lt_t when)
 {
-	//TRACE("SCHEDULER_UPDATE_AT update: %llu > when %llu\n", sup_env->next_scheduler_update, when);
 	if (sup_env->next_scheduler_update > when)
 		sup_env->next_scheduler_update = when;
 }
@@ -203,7 +230,6 @@ static void sup_charge_budget(
 				encountered_active = 1;
 			}
 		} else {
-			//BUG_ON(res->state != RESERVATION_ACTIVE_IDLE);
 			TRACE("sup_charge_budget INACTIVE R%u drain %llu\n", res->id, delta);
 			res->ops->drain_budget(res, delta);
 		}
@@ -216,11 +242,7 @@ static void sup_charge_budget(
 				res->id, res->cur_budget);
 			 sup_scheduler_update_after(sup_env, res->cur_budget);
 		}
-		//if (encountered_active == 2)
-			/* stop at the first ACTIVE reservation */
-		//	break;
 	}
-	//TRACE("finished charging budgets\n");
 }
 
 static void sup_replenish_budgets(struct sup_reservation_environment* sup_env)
@@ -255,7 +277,9 @@ void sup_update_time(
 	/* If the time didn't advance, there is nothing to do.
 	 * This check makes it safe to call sup_advance_time() potentially
 	 * multiple times (e.g., via different code paths. */
-	//TRACE("(sup_update_time) now: %llu, current_time: %llu\n", now, sup_env->env.current_time);
+	if (!list_empty(&sup_env->active_reservations))
+		TRACE("(sup_update_time) now: %llu, current_time: %llu\n", now,
+			sup_env->env.current_time);
 	if (unlikely(now <= sup_env->env.current_time))
 		return;
 
@@ -267,11 +291,9 @@ void sup_update_time(
 		sup_env->next_scheduler_update = SUP_NO_SCHEDULER_UPDATE;
 
 	/* deplete budgets by passage of time */
-	//TRACE("CHARGE###\n");
 	sup_charge_budget(sup_env, delta);
 
-	/* check if any budgets where replenished */
-	//TRACE("REPLENISH###\n");
+	/* check if any budgets were replenished */
 	sup_replenish_budgets(sup_env);
 }
 
@@ -318,7 +340,7 @@ static void sup_res_change_state(
 
 void sup_init(struct sup_reservation_environment* sup_env)
 {
-	memset(sup_env, sizeof(*sup_env), 0);
+	memset(sup_env, 0, sizeof(*sup_env));
 
 	INIT_LIST_HEAD(&sup_env->active_reservations);
 	INIT_LIST_HEAD(&sup_env->depleted_reservations);
@@ -690,7 +712,7 @@ static void gmp_res_change_state(
 
 void gmp_init(struct gmp_reservation_environment* gmp_env)
 {
-	memset(gmp_env, sizeof(*gmp_env), 0);
+	memset(gmp_env, 0, sizeof(*gmp_env));
 
 	INIT_LIST_HEAD(&gmp_env->active_reservations);
 	INIT_LIST_HEAD(&gmp_env->depleted_reservations);

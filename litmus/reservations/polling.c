@@ -126,35 +126,6 @@ static void periodic_polling_on_replenishment_edf(
 	periodic_polling_on_replenishment(res);
 }
 
-static void common_drain_budget(
-		struct reservation *res,
-		lt_t how_much)
-{
-	if (how_much >= res->cur_budget)
-		res->cur_budget = 0;
-	else
-		res->cur_budget -= how_much;
-
-	res->budget_consumed += how_much;
-	res->budget_consumed_total += how_much;
-
-	switch (res->state) {
-		case RESERVATION_DEPLETED:
-		case RESERVATION_INACTIVE:
-			//BUG();
-			TRACE("!!!!!!!!!!!!!!!STATE ERROR R%d STATE(%d)\n", res->id, res->state);
-			break;
-
-		case RESERVATION_ACTIVE_IDLE:
-		case RESERVATION_ACTIVE:
-			if (!res->cur_budget) {
-				res->env->change_state(res->env, res,
-					RESERVATION_DEPLETED);
-			} /* else: stay in current state */
-			break;
-	}
-}
-
 static struct reservation_ops periodic_polling_ops_fp = {
 	.dispatch_client = default_dispatch_client,
 	.client_arrives = periodic_polling_client_arrives,
@@ -278,11 +249,13 @@ void polling_reservation_init(
 	pres->offset = offset;
 	TRACE_TASK(current, "polling_reservation_init: periodic %d, use_edf %d\n", use_periodic_polling, use_edf_prio);
 	if (use_periodic_polling) {
+		pres->res.kind = PERIODIC_POLLING;
 		if (use_edf_prio)
 			pres->res.ops = &periodic_polling_ops_edf;
 		else
 			pres->res.ops = &periodic_polling_ops_fp;
 	} else {
+		pres->res.kind = SPORADIC_POLLING;
 		if (use_edf_prio)
 			pres->res.ops = &sporadic_polling_ops_edf;
 		else

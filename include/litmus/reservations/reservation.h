@@ -147,6 +147,9 @@ struct task_struct* default_dispatch_client(
 	lt_t *for_at_most
 );
 
+/* drain budget at linear rate, enter DEPLETED state when budget used up */
+void common_drain_budget(struct reservation *res, lt_t how_much);
+
 /* "connector" reservation client to hook up tasks with reservations */
 struct task_client {
 	struct reservation_client client;
@@ -194,6 +197,7 @@ struct sup_reservation_environment {
 void sup_init(struct sup_reservation_environment* sup_env);
 void sup_add_new_reservation(struct sup_reservation_environment* sup_env,
 	struct reservation* new_res);
+// We expose this as we need it in the MC^2 scheduler
 void sup_scheduler_update_after(struct sup_reservation_environment* sup_env,
 	lt_t timeout);
 void sup_update_time(struct sup_reservation_environment* sup_env, lt_t now);
