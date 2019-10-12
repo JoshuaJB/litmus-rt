@@ -405,7 +405,6 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		struct buffer_head *head, enum migrate_mode mode,
 		int extra_count)
 {
-	int prev_count = page_count(page);
 	void **pslot;
 
 	BUG_ON(!mapping);
@@ -422,13 +421,6 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		SetPageSwapCache(newpage);
 		set_page_private(newpage, page_private(page));
 	}
-
-	/*
-	 * Drop cache reference from old page by unfreezing
-	 * to the previous reference.
-	 * We know this isn't the last reference.
-	 */
-	page_unfreeze_refs(page, prev_count);
 
 	/*
 	 * If moved to a different zone then also account
