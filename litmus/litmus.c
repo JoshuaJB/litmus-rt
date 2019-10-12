@@ -521,7 +521,7 @@ asmlinkage long sys_set_page_color(int cpu)
 	if (!list_empty(&fakedev_pagelist)) {
 		ret = migrate_pages(&fakedev_pagelist, alloc_colored_page, NULL, 9, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld pages not migrated.\n", ret);
-		nr_not_migrated = ret;
+		nr_not_migrated += ret;
 		if (ret) {
 			putback_movable_pages(&fakedev_pagelist);
 		}
