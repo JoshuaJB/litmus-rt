@@ -381,9 +381,11 @@ asmlinkage long sys_set_page_color(int cpu)
 	long ret = 0;
 	struct vm_area_struct *vma_itr = NULL;
 	int nr_pages = 0, nr_shared_pages = 0, nr_failed = 0, nr_not_migrated = 0;
+	int corrupted_lib_pages = 0, total_lib_pages = 0;
 	unsigned long node;
 	enum crit_level lv;
 	struct mm_struct *mm;
+	struct shared_lib_page *lib_page;
 
 	LIST_HEAD(pagelist);
 	LIST_HEAD(task_shared_pagelist);
@@ -401,6 +403,22 @@ asmlinkage long sys_set_page_color(int cpu)
 	down_read(&mm->mmap_sem);
 
 	vma_itr = mm->mmap;
+
+	// Some basic sanity checks on shared_lib_pages
+	rcu_read_lock();
+	list_for_each_entry(lib_page, &shared_lib_pages, list)
+	{
+		if (lib_page->master_page == 0) {
+			corrupted_lib_pages++;
+		}
+		total_lib_pages++;
+	}
+	rcu_read_unlock();
+
+	if (corrupted_lib_pages > 0) {
+		pr_alert("Oh no! %d of %d shared lib pages are corrupted.", corrupted_lib_pages, total_lib_pages);
+	}
+
 	/* Iterate all vm_area_struct */
 	while (vma_itr != NULL) {
 		unsigned int num_pages = 0, i;
@@ -438,7 +456,6 @@ asmlinkage long sys_set_page_color(int cpu)
 
 			/* Conditions for replicable pages */
 			if (page_count(old_page) > 2 && vma_itr->vm_file != NULL && !(vma_itr->vm_flags&VM_WRITE)) {
-				struct shared_lib_page *lib_page;
 				int is_exist = 0;
 
 				/* Update PSL (Per-core shared library (master)) list */
@@ -500,12 +517,12 @@ asmlinkage long sys_set_page_color(int cpu)
 		vma_itr = vma_itr->vm_next;
 	}
 
-	ret = 0;
 	lv = tsk_rt(current)->mc2_data->crit;
 	if (cpu == -1)
 		node = 8;
 	else
 		node = cpu*2 + lv;
+
 
 	/* Migrate private pages */
 	if (!list_empty(&pagelist)) {
@@ -532,12 +549,12 @@ asmlinkage long sys_set_page_color(int cpu)
 		ret = replicate_pages(&task_shared_pagelist, alloc_colored_page, NULL, node, MIGRATE_SYNC, MR_SYSCALL);
 		TRACE_TASK(current, "%ld shared pages not migrated.\n", ret);
 		nr_not_migrated += ret;
-		if (ret) {
-			putback_movable_pages(&task_shared_pagelist);
-		}
+		// This adds the master pages back into the LRU
+		putback_movable_pages(&task_shared_pagelist);
 	}
 
 	up_read(&mm->mmap_sem);
+	mmput(mm);
 
 	TRACE_TASK(current, "nr_pages = %d nr_failed = %d nr_not_migrated = %d\n", nr_pages, nr_failed, nr_not_migrated);
 	printk(KERN_INFO "node = %ld, nr_private_pages = %d, nr_shared_pages = %d, nr_failed_to_isolate_lru = %d, nr_not_migrated = %d\n", node, nr_pages, nr_shared_pages, nr_failed, nr_not_migrated);
@@ -623,6 +640,8 @@ asmlinkage long sys_recolor_mem(void* mem, int n_pages, int cpu)
 	struct mm_struct *mm;
 
 	LIST_HEAD(pagelist);
+	pr_emerg("sys_recolor_mem is unmaintained and known to be broken");
+	BUG();
 
 	printk(KERN_INFO "mem addr = 0x%lx\n", (unsigned long)mem);
 	return 0;
