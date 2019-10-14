@@ -1310,10 +1310,10 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 		has_replica = 1;
 	}
 
-	if (page_count(page) == 1) {
-		/* page was freed from under us. So we are done. */
-		goto out;
-	}
+	// We should only duplicate shared pages
+	// If page count == 1, it's owned by no one else
+	// If page count == 2, it's only owned by one user besides us
+	VM_BUG_ON(page_count(page) <= 2);
 
 	if (unlikely(PageTransHuge(page)))
 		if (unlikely(split_huge_page(page)))
@@ -1327,19 +1327,6 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 	}
 
 out:
-	if (rc != -EAGAIN) {
-		/*
-		 * A page that has been migrated has all references
-		 * removed and will be freed. A page that has not been
-		 * migrated will have kepts its references and be
-		 * restored.
-		 */
-		list_del(&page->lru);
-		dec_zone_page_state(page, NR_ISOLATED_ANON +
-				page_is_file_cache(page));
-		putback_lru_page(page);
-	}
-
 	/*
 	 * If migration was not successful and there's a freeing callback, use
 	 * it.  Otherwise, putback_lru_page() will drop the reference grabbed
