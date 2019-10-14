@@ -392,34 +392,15 @@ int migrate_page_move_mapping(struct address_space *mapping,
 	return MIGRATEPAGE_SUCCESS;
 }
 
-/*
- * Replace the page in the mapping.
- *
- * The number of remaining references must be:
- * 1 for anonymous pages without a mapping
- * 2 for pages with a mapping
- * 3 for pages with a mapping and PagePrivate/PagePrivate2 set.
- */
-int replicate_page_move_mapping(struct address_space *mapping,
-		struct page *newpage, struct page *page,
-		struct buffer_head *head, enum migrate_mode mode,
-		int extra_count)
+int replicate_page_mapping(struct page *newpage, struct page *page)
 {
-	// TODO: Handle pages without a mapping (why do we even need a mapping??)
-	BUG_ON(!mapping);
-
-	spin_lock_irq(&mapping->tree_lock);
-
 	/*
-	 * Note that we do not add this page into &mapping->page_tree
+	 * TODO: Note that we do not add this page into &mapping->page_tree
 	 * because that is structured to only track one struct page *
 	 * per page offset in this inode. Finding a way to track duplicate
 	 * instances to improve efficiency would be ideal, but not essential.
 	 */
 
-	/*
-	 * Now we know that no one else is looking at the page.
-	 */
 	get_page(newpage);	/* add cache reference */
 	if (PageSwapCache(page)) {
 		SetPageSwapCache(newpage);
@@ -427,7 +408,7 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	}
 
 	/*
-	 * If moved to a different zone then also account
+	 * If replicated to a different zone then also account
 	 * the page for that zone. Other VM counters will be
 	 * taken care of when we establish references to the
 	 * new page and drop references to the old page.
@@ -436,13 +417,9 @@ int replicate_page_move_mapping(struct address_space *mapping,
 	 * via NR_FILE_PAGES and NR_ANON_PAGES if they
 	 * are mapped to swap space.
 	 */
-	__dec_zone_page_state(page, NR_FILE_PAGES);
 	__inc_zone_page_state(newpage, NR_FILE_PAGES);
-	if (!PageSwapCache(page) && PageSwapBacked(page)) {
-		__dec_zone_page_state(page, NR_SHMEM);
+	if (!PageSwapCache(page) && PageSwapBacked(page))
 		__inc_zone_page_state(newpage, NR_SHMEM);
-	}
-	spin_unlock_irq(&mapping->tree_lock);
 
 	return MIGRATEPAGE_SUCCESS;
 }
@@ -648,12 +625,8 @@ void replicate_page_copy(struct page *newpage, struct page *page)
 			__set_page_dirty_nobuffers(newpage);
 	}
 
-	/*
-	 * Copy NUMA information to the new page, to prevent over-eager
-	 * future migrations of this same page.
-	 */
 #ifdef CONFIG_NUMA_BALANCING
-	BUG();
+	#error MC2 does not support CONFIG_NUMA_BALANCING
 #endif
 
 	if (PageMlocked(page)) {
@@ -706,16 +679,18 @@ int replicate_page(struct address_space *mapping,
 		struct page *newpage, struct page *page,
 		enum migrate_mode mode, int has_replica)
 {
-	int rc, extra_count = 0;
+	int rc;
 
 	BUG_ON(PageWriteback(page));	/* Writeback must be complete */
-
-	rc = replicate_page_move_mapping(mapping, newpage, page, NULL, mode, extra_count);
-	if (rc != MIGRATEPAGE_SUCCESS)
-		return rc;
-
-	if (has_replica == 0)
+	if (!has_replica) {
+		rc = replicate_page_mapping(newpage, page);
+		if (rc != MIGRATEPAGE_SUCCESS)
+			return rc;
 		replicate_page_copy(newpage, page);
+	} else {
+		get_page(newpage);
+	}
+
 	return MIGRATEPAGE_SUCCESS;
 }
 
