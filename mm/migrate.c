@@ -405,13 +405,17 @@ int replicate_page_move_mapping(struct address_space *mapping,
 		struct buffer_head *head, enum migrate_mode mode,
 		int extra_count)
 {
-	void **pslot;
-
+	// TODO: Handle pages without a mapping (why do we even need a mapping??)
 	BUG_ON(!mapping);
 
 	spin_lock_irq(&mapping->tree_lock);
 
-	pslot = radix_tree_lookup_slot(&mapping->page_tree, page_index(page));
+	/*
+	 * Note that we do not add this page into &mapping->page_tree
+	 * because that is structured to only track one struct page *
+	 * per page offset in this inode. Finding a way to track duplicate
+	 * instances to improve efficiency would be ideal, but not essential.
+	 */
 
 	/*
 	 * Now we know that no one else is looking at the page.
