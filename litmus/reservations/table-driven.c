@@ -70,7 +70,7 @@ static void td_client_departs(
 	switch (res->state) {
 		case RESERVATION_INACTIVE:
 		case RESERVATION_ACTIVE_IDLE:
-			//BUG(); /* INACTIVE or IDLE <=> no client */
+			BUG(); /* INACTIVE or IDLE <=> no client */
 			break;
 
 		case RESERVATION_ACTIVE:
@@ -90,7 +90,11 @@ static lt_t td_time_remaining_until_end(struct table_driven_reservation *tdres)
 {
 	lt_t now = tdres->res.env->current_time;
 	lt_t end = tdres->cur_interval.end;
-	//TRACE("td_remaining(%u): start=%llu now=%llu end=%llu state=%d\n", tdres->res.id,	tdres->cur_interval.start, now, end, tdres->res.state);
+	TRACE("td_remaining(%u): start=%llu now=%llu end=%llu state=%d\n",
+		tdres->res.id,
+		tdres->cur_interval.start,
+		now, end,
+		tdres->res.state);
 	if (now >=  end)
 		return 0;
 	else
@@ -103,22 +107,24 @@ static void td_replenish(
 	struct table_driven_reservation *tdres =
 		container_of(res, struct table_driven_reservation, res);
 
-	//TRACE("td_replenish(%u): expected_replenishment=%llu\n", res->id, res->next_replenishment);
+	TRACE("td_replenish(%u): expected_replenishment=%llu\n", res->id,
+		res->next_replenishment);
 
 	/* figure out current interval */
 	tdres->cur_interval.start = tdres->major_cycle_start +
 		tdres->intervals[tdres->next_interval].start;
 	tdres->cur_interval.end =  tdres->major_cycle_start +
 		tdres->intervals[tdres->next_interval].end;
-/*	TRACE("major_cycle_start=%llu => [%llu, %llu]\n",
+	TRACE("major_cycle_start=%llu => [%llu, %llu]\n",
 		tdres->major_cycle_start,
 		tdres->cur_interval.start,
 		tdres->cur_interval.end);
-*/
+
 	/* reset budget */
 	res->cur_budget = td_time_remaining_until_end(tdres);
 	res->budget_consumed = 0;
-	//TRACE("td_replenish(%u): %s budget=%llu\n", res->id, res->cur_budget ? "" : "WARNING", res->cur_budget);
+	TRACE("td_replenish(%u): %s budget=%llu\n", res->id,
+		res->cur_budget ? "" : "WARNING", res->cur_budget);
 
 	/* prepare next slot */
 	tdres->next_interval = (tdres->next_interval + 1) % tdres->num_intervals;
@@ -129,7 +135,8 @@ static void td_replenish(
 	/* determine next time this reservation becomes eligible to execute */
 	res->next_replenishment  = tdres->major_cycle_start;
 	res->next_replenishment += tdres->intervals[tdres->next_interval].start;
-	//TRACE("td_replenish(%u): next_replenishment=%llu\n", res->id, res->next_replenishment);
+	TRACE("td_replenish(%u): next_replenishment=%llu\n", res->id,
+		res->next_replenishment);
 
 
 	switch (res->state) {
@@ -165,33 +172,26 @@ static void td_drain_budget(
 	 * how much time is left in this allocation interval. */
 
 	/* sanity check: we should never try to drain from future slots */
-	//TRACE("TD_DRAIN STATE(%d) [%llu,%llu]  %llu ?\n", res->state, tdres->cur_interval.start, tdres->cur_interval.end, res->env->current_time);
-	//BUG_ON(tdres->cur_interval.start > res->env->current_time);
-	if (tdres->cur_interval.start > res->env->current_time)
-		TRACE("TD_DRAIN BUG!!!!!!!!!!\n");
+	BUG_ON(tdres->cur_interval.start > res->env->current_time);
 
 	switch (res->state) {
 		case RESERVATION_DEPLETED:
 		case RESERVATION_INACTIVE:
-			//BUG();
-			TRACE("TD_DRAIN!!!!!!!!! RES_STATE = %d\n", res->state);
+			BUG();
 			break;
 
 		case RESERVATION_ACTIVE_IDLE:
 		case RESERVATION_ACTIVE:
 			res->cur_budget = td_time_remaining_until_end(tdres);
-			//TRACE("td_drain_budget(%u): drained to budget=%llu\n", res->id, res->cur_budget);
+			TRACE("td_drain_budget(%u): drained to budget=%llu\n",
+				res->id, res->cur_budget);
 			if (!res->cur_budget) {
 				res->env->change_state(res->env, res,
 					RESERVATION_DEPLETED);
 			} else {
 				/* sanity check budget calculation */
-				//BUG_ON(res->env->current_time >= tdres->cur_interval.end);
-				//BUG_ON(res->env->current_time < tdres->cur_interval.start);
-				if (res->env->current_time >= tdres->cur_interval.end)
-					printk(KERN_ALERT "TD_DRAIN_BUDGET WARNING1\n");
-				if (res->env->current_time < tdres->cur_interval.start)
-					printk(KERN_ALERT "TD_DRAIN_BUDGET WARNING2\n");
+				BUG_ON(res->env->current_time >= tdres->cur_interval.end);
+				BUG_ON(res->env->current_time < tdres->cur_interval.start);
 			}
 
 			break;
@@ -259,6 +259,7 @@ void table_driven_reservation_init(
 	BUG_ON(intervals[num_intervals - 1].end > major_cycle);
 
 	reservation_init(&tdres->res);
+	tdres->res.kind = TABLE_DRIVEN;
 	tdres->major_cycle = major_cycle;
 	tdres->intervals = intervals;
 	tdres->cur_interval.start = 0;
