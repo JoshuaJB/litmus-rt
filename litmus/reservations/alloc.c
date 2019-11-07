@@ -48,8 +48,6 @@ long alloc_polling_reservation(
 		config->polling_params.relative_deadline,
 		config->polling_params.offset);
 	pres->res.id = config->id;
-	pres->res.blocked_by_ghost = 0;
-	pres->res.is_ghost = 0xffffffff;//NO_CPU;
 	if (!use_edf)
 		pres->res.priority = config->priority;
 
@@ -137,7 +135,6 @@ long alloc_table_driven_reservation(
 			slots, num_slots);
 		td_res->res.id = config->id;
 		td_res->res.priority = config->priority;
-		td_res->res.blocked_by_ghost = 0;
 		*_res = &td_res->res;
 	}
 

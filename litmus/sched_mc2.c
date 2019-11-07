@@ -66,13 +66,7 @@ struct mc2_task_state {
 	struct mc2_task mc2_param;
 };
 
-/* crit_entry - maintain the logically running job (ghost job) */
-struct crit_entry {
-	enum crit_level level;
-	struct task_struct *running;
-};
-
-/* mc2_cpu_state - maintain the scheduled state and ghost jobs
+/* mc2_cpu_state - maintain the scheduled state
  * timer : timer for partitioned tasks (level A and B)
  * g_timer : timer for global tasks (level C)
  */
@@ -84,7 +78,6 @@ struct mc2_cpu_state {
 
 	int cpu;
 	struct task_struct* scheduled;
-	struct crit_entry crit_entries[NUM_CRIT_LEVELS];
 };
 
 static int resched_cpu[NR_CPUS];
@@ -124,8 +117,7 @@ static enum crit_level get_task_crit_level(struct task_struct *tsk)
 }
 
 /* task_depart - remove a task from its reservation
- *               If the job has remaining budget, convert it to a ghost job
- *               and update crit_entries[]
+ *               If the job has remaining budget, drain it.
  *
  * @job_complete	indicate whether job completes or not
  */
@@ -143,7 +135,7 @@ static void task_departs(struct task_struct *tsk, int job_complete)
 	BUG_ON(!res);
 	BUG_ON(!client);
 
-    /* No ghost job handling, empty remaining budget */
+	/* empty remaining budget */
 	if (job_complete) {
 		res->cur_budget = 0;
 		sched_trace_task_completion(tsk, 0);
@@ -155,14 +147,12 @@ static void task_departs(struct task_struct *tsk, int job_complete)
 }
 
 /* task_arrive - put a task into its reservation
- *               If the job was a ghost job, remove it from crit_entries[]
  */
 static void task_arrives(struct mc2_cpu_state *state, struct task_struct *tsk)
 {
 	struct mc2_task_state* tinfo = get_mc2_state(tsk);
 	struct reservation* res;
 	struct reservation_client *client;
-	//enum crit_level lv = get_task_crit_level(tsk);
 
 	res    = tinfo->res_info.client.reservation;
 	client = &tinfo->res_info.client;
@@ -171,15 +161,6 @@ static void task_arrives(struct mc2_cpu_state *state, struct task_struct *tsk)
 
 	res->ops->client_arrives(res, client);
 	TRACE_TASK(tsk, "Client arrives at %llu\n", litmus_clock());
-/*
-	if (lv != NUM_CRIT_LEVELS) {
-		struct crit_entry *ce;
-		ce = &state->crit_entries[lv];
-		// if the currrent task is a ghost job, remove it
-		if (ce->running == tsk)
-			ce->running = NULL;
-	}
-*/
 }
 
 /* get_lowest_prio_cpu - return the lowest priority cpu
@@ -544,25 +525,14 @@ struct task_struct* mc2_dispatch(struct sup_reservation_environment* sup_env, st
 {
 	struct reservation *res, *next;
 	struct task_struct *tsk = NULL;
-	struct crit_entry *ce;
-	enum crit_level lv;
 	lt_t time_slice;
 
 	list_for_each_entry_safe(res, next, &sup_env->active_reservations, list) {
 		if (res->state == RESERVATION_ACTIVE) {
 			tsk = res->ops->dispatch_client(res, &time_slice);
 			if (likely(tsk)) {
-				lv = get_task_crit_level(tsk);
-				if (lv == NUM_CRIT_LEVELS) {
-					sup_scheduler_update_after(sup_env, res->cur_budget);
-					return tsk;
-				} else {
-					ce = &state->crit_entries[lv];
-					sup_scheduler_update_after(sup_env, res->cur_budget);
-					res->blocked_by_ghost = 0;
-					res->is_ghost = NO_CPU;
-					return tsk;
-				}
+				sup_scheduler_update_after(sup_env, res->cur_budget);
+				return tsk;
 			}
 		}
 	}
@@ -589,8 +559,6 @@ struct task_struct* mc2_global_dispatch(struct mc2_cpu_state* state)
 				gmp_add_event_after(&_global_env, res->cur_budget, res->id, EVENT_DRAIN);
 #endif
 				res->event_added = 1;
-				res->blocked_by_ghost = 0;
-				res->is_ghost = NO_CPU;
 				res->scheduled_on = state->cpu;
 				return tsk;
 			}
@@ -1080,7 +1048,6 @@ static void mc2_task_exit(struct task_struct *tsk)
 	struct mc2_task_state* tinfo = get_mc2_state(tsk);
 	struct mc2_cpu_state *state;
 	enum crit_level lv = tinfo->mc2_param.crit;
-	struct crit_entry* ce;
 	int cpu;
 
 	local_irq_save(flags);
@@ -1093,10 +1060,6 @@ static void mc2_task_exit(struct task_struct *tsk)
 
 	if (state->scheduled == tsk)
 		state->scheduled = NULL;
-
-	ce = &state->crit_entries[lv];
-	if (ce->running == tsk)
-		ce->running = NULL;
 
 	/* remove from queues */
 	if (is_running(tsk)) {
@@ -1132,10 +1095,6 @@ static void mc2_task_exit(struct task_struct *tsk)
 
 			if (state->scheduled == tsk)
 				state->scheduled = NULL;
-
-			ce = &state->crit_entries[lv];
-			if (ce->running == tsk)
-				ce->running = NULL;
 
 			raw_spin_unlock(&state->lock);
 		}
@@ -1263,7 +1222,7 @@ static void mc2_setup_domain_proc(void)
 
 static long mc2_activate_plugin(void)
 {
-	int cpu, lv;
+	int cpu;
 	struct mc2_cpu_state *state;
 	struct cpu_entry *ce;
 
@@ -1287,11 +1246,6 @@ static long mc2_activate_plugin(void)
 		raw_spin_lock_init(&state->lock);
 		state->cpu = cpu;
 		state->scheduled = NULL;
-		for (lv = 0; lv < NUM_CRIT_LEVELS; lv++) {
-			struct crit_entry *cr_entry = &state->crit_entries[lv];
-			cr_entry->level = lv;
-			cr_entry->running = NULL;
-		}
 		sup_init(&state->sup_env);
 
 		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);

@@ -224,7 +224,7 @@ static void sup_charge_budget(
 		res = list_entry(pos, struct reservation, list);
 		if (res->state == RESERVATION_ACTIVE) {
 			TRACE("sup_charge_budget ACTIVE R%u drain %llu\n", res->id, delta);
-			if (encountered_active == 0 && res->blocked_by_ghost == 0) {
+			if (encountered_active == 0) {
 				TRACE("DRAIN !!\n");
 				res->ops->drain_budget(res, delta);
 				encountered_active = 1;
@@ -567,7 +567,7 @@ static void gmp_charge_budget(
 		res = list_entry(pos, struct reservation, list);
 		if (res->state == RESERVATION_ACTIVE) {
 			TRACE("gmp_charge_budget ACTIVE R%u scheduled_on=%d drain %llu\n", res->id, res->scheduled_on, delta);
-			if (res->scheduled_on != NO_CPU && res->blocked_by_ghost == 0) {
+			if (res->scheduled_on != NO_CPU) {
 				TRACE("DRAIN !!\n");
 				drained = 1;
 				res->ops->drain_budget(res, delta);
@@ -579,11 +579,9 @@ static void gmp_charge_budget(
 			if (res->state != RESERVATION_ACTIVE_IDLE)
 				TRACE("BUG!!!!!!!!!!!! gmp_charge_budget()\n");
 			TRACE("gmp_charge_budget INACTIVE R%u drain %llu\n", res->id, delta);
-			//if (res->is_ghost != NO_CPU) {
-				TRACE("DRAIN !!\n");
-				drained = 1;
-				res->ops->drain_budget(res, delta);
-			//}
+			TRACE("DRAIN !!\n");
+			drained = 1;
+			res->ops->drain_budget(res, delta);
 		}
 		if ((res->state == RESERVATION_ACTIVE ||
 			res->state == RESERVATION_ACTIVE_IDLE) && (drained == 1))
@@ -620,9 +618,7 @@ static void gmp_replenish_budgets(struct gmp_reservation_environment* gmp_env)
 		res = list_entry(pos, struct reservation, list);
 		if (res->next_replenishment <= gmp_env->env.current_time) {
 			res->ops->replenish(res);
-			if (res->is_ghost != NO_CPU) {
-				TRACE("R%d replenished! scheduled_on=%d\n", res->id, res->scheduled_on);
-			}
+			TRACE("R%d replenished! scheduled_on=%d\n", res->id, res->scheduled_on);
 		} else {
 			/* list is ordered by increasing depletion times */
 			break;

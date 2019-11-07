@@ -131,10 +131,6 @@ struct reservation {
 	/* for global env. */
 	int scheduled_on;
 	int event_added;
-	/* for blocked by ghost. Do not charge budget when ACTIVE */
-	int blocked_by_ghost;
-	/* ghost_job. If it is clear, do not charge budget when ACTIVE_IDLE */
-	int is_ghost;
 };
 
 void reservation_init(struct reservation *res);

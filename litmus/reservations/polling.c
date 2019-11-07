@@ -41,7 +41,6 @@ static void periodic_polling_client_arrives(
 			break;
 
 		case RESERVATION_ACTIVE_IDLE:
-			res->blocked_by_ghost = 0;
 			res->env->change_state(res->env, res,
 				RESERVATION_ACTIVE);
 			break;
