@@ -1191,10 +1191,8 @@ static long create_polling_reservation(
 		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
 	}
 
-	return err;
+	return config->id;
 }
-
-#define MAX_INTERVALS 1024
 
 /* create_table_driven_reservation - create a table_driven reservation
  */
@@ -1203,99 +1201,21 @@ static long create_table_driven_reservation(
 {
 	struct mc2_cpu_state *state;
 	struct reservation* res;
-	struct table_driven_reservation *td_res = NULL;
-	struct lt_interval *slots = NULL;
-	size_t slots_size;
-	unsigned int i, num_slots;
 	unsigned long flags;
-	long err = -EINVAL;
+	long err = 0;
 
+	state = cpu_state_for(config->cpu);
+	raw_spin_lock_irqsave(&state->lock, flags);
+	res = sup_find_by_id(&state->sup_env, config->id);
+	raw_spin_unlock_irqrestore(&state->lock, flags);
+	if (res)
+		return -EEXIST;
 
-	if (!config->table_driven_params.num_intervals) {
-		printk(KERN_ERR "invalid table-driven reservation (%u): "
-		       "no intervals\n", config->id);
-		return -EINVAL;
-	}
+	err = alloc_table_driven_reservation(config, &res);
+	if (err)
+		return err;
 
-	if (config->table_driven_params.num_intervals > MAX_INTERVALS) {
-		printk(KERN_ERR "invalid table-driven reservation (%u): "
-		       "too many intervals (max: %d)\n", config->id, MAX_INTERVALS);
-		return -EINVAL;
-	}
-
-	num_slots = config->table_driven_params.num_intervals;
-	slots_size = sizeof(slots[0]) * num_slots;
-	slots = kzalloc(slots_size, GFP_KERNEL);
-	if (!slots)
-		return -ENOMEM;
-
-	td_res = kzalloc(sizeof(*td_res), GFP_KERNEL);
-	if (!td_res)
-		err = -ENOMEM;
-	else
-		err = copy_from_user(slots,
-			config->table_driven_params.intervals, slots_size);
-
-	if (!err) {
-		/* sanity checks */
-		for (i = 0; !err && i < num_slots; i++)
-			if (slots[i].end <= slots[i].start) {
-				printk(KERN_ERR
-				       "invalid table-driven reservation (%u): "
-				       "invalid interval %u => [%llu, %llu]\n",
-				       config->id, i,
-				       slots[i].start, slots[i].end);
-				err = -EINVAL;
-			}
-
-		for (i = 0; !err && i + 1 < num_slots; i++)
-			if (slots[i + 1].start <= slots[i].end) {
-				printk(KERN_ERR
-				       "invalid table-driven reservation (%u): "
-				       "overlapping intervals %u, %u\n",
-				       config->id, i, i + 1);
-				err = -EINVAL;
-			}
-
-		if (slots[num_slots - 1].end >
-			config->table_driven_params.major_cycle_length) {
-			printk(KERN_ERR
-				"invalid table-driven reservation (%u): last "
-				"interval ends past major cycle %llu > %llu\n",
-				config->id,
-				slots[num_slots - 1].end,
-				config->table_driven_params.major_cycle_length);
-			err = -EINVAL;
-		}
-	}
-
-	if (!err) {
-		state = cpu_state_for(config->cpu);
-		raw_spin_lock_irqsave(&state->lock, flags);
-
-		res = sup_find_by_id(&state->sup_env, config->id);
-		if (!res) {
-			table_driven_reservation_init(td_res,
-				config->table_driven_params.major_cycle_length,
-				slots, num_slots);
-			td_res->res.id = config->id;
-			td_res->res.priority = config->priority;
-			td_res->res.blocked_by_ghost = 0;
-			sup_add_new_reservation(&state->sup_env, &td_res->res);
-			err = config->id;
-		} else {
-			err = -EEXIST;
-		}
-
-		raw_spin_unlock_irqrestore(&state->lock, flags);
-	}
-
-	if (err < 0) {
-		kfree(slots);
-		kfree(td_res);
-	}
-
-	return err;
+	return config->id;
 }
 
 /* mc2_reservation_create - reservation_create system call backend
