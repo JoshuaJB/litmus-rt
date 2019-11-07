@@ -1149,81 +1149,16 @@ static void mc2_task_exit(struct task_struct *tsk)
 	tsk_rt(tsk)->mc2_data = NULL;
 }
 
-/* create_polling_reservation - create a new polling reservation
- */
-static long create_polling_reservation(
-	int res_type,
-	struct reservation_config *config)
-{
-	struct mc2_cpu_state *state;
-	struct reservation* res;
-	unsigned long flags;
-	long err = 0;
-
-	/* check for existing reservation */
-	if (config->cpu != -1) {
-		state = cpu_state_for(config->cpu);
-		raw_spin_lock_irqsave(&state->lock, flags);
-		res = sup_find_by_id(&state->sup_env, config->id);
-		raw_spin_unlock_irqrestore(&state->lock, flags);
-	} else {
-		raw_spin_lock_irqsave(&_global_env.lock, flags);
-		res = gmp_find_by_id(&_global_env, config->id);
-		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
-	}
-	if (res)
-		return -EEXIST;
-
-	err = alloc_polling_reservation(res_type, config, &res);
-	if (err)
-		return err;
-
-	/* add to appropriate environment */
-	if (config->cpu != -1) {
-		state = cpu_state_for(config->cpu);
-		raw_spin_lock_irqsave(&state->lock, flags);
-		sup_add_new_reservation(&state->sup_env, res);
-		raw_spin_unlock_irqrestore(&state->lock, flags);
-		TRACE_CUR("reservation created R%d priority : %llu\n", config->id, res->priority);
-	} else {
-		raw_spin_lock_irqsave(&_global_env.lock, flags);
-		gmp_add_new_reservation(&_global_env, res);
-		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
-	}
-
-	return config->id;
-}
-
-/* create_table_driven_reservation - create a table_driven reservation
- */
-static long create_table_driven_reservation(
-	struct reservation_config *config)
-{
-	struct mc2_cpu_state *state;
-	struct reservation* res;
-	unsigned long flags;
-	long err = 0;
-
-	state = cpu_state_for(config->cpu);
-	raw_spin_lock_irqsave(&state->lock, flags);
-	res = sup_find_by_id(&state->sup_env, config->id);
-	raw_spin_unlock_irqrestore(&state->lock, flags);
-	if (res)
-		return -EEXIST;
-
-	err = alloc_table_driven_reservation(config, &res);
-	if (err)
-		return err;
-
-	return config->id;
-}
-
 /* mc2_reservation_create - reservation_create system call backend
  */
 static long mc2_reservation_create(int res_type, void* __user _config)
 {
-	long ret = -EINVAL;
 	struct reservation_config config;
+	struct mc2_cpu_state *state;
+	struct reservation* res;
+	struct reservation* new_res = NULL;
+	unsigned long flags;
+	long err;
 
 	TRACE("Attempt to create reservation (%d)\n", res_type);
 
@@ -1232,27 +1167,65 @@ static long mc2_reservation_create(int res_type, void* __user _config)
 
 	if (config.cpu != -1) {
 		if (config.cpu < 0 || !cpu_online(config.cpu)) {
-			printk(KERN_ERR "invalid polling reservation (%u): "
+			printk(KERN_ERR "invalid reservation (%u): "
 				   "CPU %d offline\n", config.id, config.cpu);
 			return -EINVAL;
 		}
 	}
 
+	/* Table-driven reservations cannot be global */
+	if (config.cpu == -1 && res_type == TABLE_DRIVEN)
+		return -EINVAL;
+
+	/* Allocate before we grab a spin lock. */
 	switch (res_type) {
 		case PERIODIC_POLLING:
 		case SPORADIC_POLLING:
-			ret = create_polling_reservation(res_type, &config);
+			err = alloc_polling_reservation(res_type, &config, &new_res);
 			break;
 
 		case TABLE_DRIVEN:
-			ret = create_table_driven_reservation(&config);
+			err = alloc_table_driven_reservation(&config, &new_res);
 			break;
 
 		default:
-			return -EINVAL;
+			err = -EINVAL;
+			break;
 	};
 
-	return ret;
+	if (err)
+		return err;
+
+	/* Check if the reservation exists after creating the new one so that
+	 * we only have to get the spin lock once.
+	 */
+	if (config.cpu != -1) {
+		state = cpu_state_for(config.cpu);
+		raw_spin_lock_irqsave(&state->lock, flags);
+		res = sup_find_by_id(&state->sup_env, config.id);
+		if (!res) {
+			sup_add_new_reservation(&state->sup_env, new_res);
+			err = config.id;
+		} else {
+			err = -EEXIST;
+		}
+		raw_spin_unlock_irqrestore(&state->lock, flags);
+	} else {
+		raw_spin_lock_irqsave(&_global_env.lock, flags);
+		res = gmp_find_by_id(&_global_env, config.id);
+		if (!res) {
+			gmp_add_new_reservation(&_global_env, new_res);
+			err = config.id;
+		} else {
+			err = -EEXIST;
+		}
+		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
+	}
+
+	if (err < 0)
+		kfree(new_res);
+
+	return err;
 }
 
 static struct domain_proc_info mc2_domain_proc_info;
