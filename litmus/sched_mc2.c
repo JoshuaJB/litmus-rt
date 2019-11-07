@@ -27,6 +27,7 @@
 #include <litmus/reservations/reservation.h>
 #include <litmus/reservations/polling.h>
 #include <litmus/reservations/table-driven.h>
+#include <litmus/reservations/alloc.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 
@@ -1156,91 +1157,39 @@ static long create_polling_reservation(
 {
 	struct mc2_cpu_state *state;
 	struct reservation* res;
-	struct polling_reservation *pres;
 	unsigned long flags;
-	int use_edf  = config->priority == LITMUS_NO_PRIORITY;
-	int periodic =  res_type == PERIODIC_POLLING;
-	long err = -EINVAL;
+	long err = 0;
 
-	/* sanity checks */
-	if (config->polling_params.budget >
-	    config->polling_params.period) {
-		printk(KERN_ERR "invalid polling reservation (%u): "
-		       "budget > period\n", config->id);
-		return -EINVAL;
-	}
-	if (config->polling_params.budget >
-	    config->polling_params.relative_deadline
-	    && config->polling_params.relative_deadline) {
-		printk(KERN_ERR "invalid polling reservation (%u): "
-		       "budget > deadline\n", config->id);
-		return -EINVAL;
-	}
-	if (config->polling_params.offset >
-	    config->polling_params.period) {
-		printk(KERN_ERR "invalid polling reservation (%u): "
-		       "offset > period\n", config->id);
-		return -EINVAL;
-	}
-
-	/* Allocate before we grab a spin lock.
-	 * Todo: would be nice to use a core-local allocation.
-	 */
-	pres = kzalloc(sizeof(*pres), GFP_KERNEL);
-	if (!pres)
-		return -ENOMEM;
-
+	/* check for existing reservation */
 	if (config->cpu != -1) {
 		state = cpu_state_for(config->cpu);
 		raw_spin_lock_irqsave(&state->lock, flags);
-
 		res = sup_find_by_id(&state->sup_env, config->id);
-		if (!res) {
-			polling_reservation_init(pres, use_edf, periodic,
-				config->polling_params.budget,
-				config->polling_params.period,
-				config->polling_params.relative_deadline,
-				config->polling_params.offset);
-			pres->res.id = config->id;
-			pres->res.blocked_by_ghost = 0;
-			pres->res.is_ghost = NO_CPU;
-			if (!use_edf)
-				pres->res.priority = config->priority;
-			sup_add_new_reservation(&state->sup_env, &pres->res);
-			err = config->id;
-			TRACE_CUR("reservation created R%d priority : %llu\n", config->id, pres->res.priority);
-		} else {
-			err = -EEXIST;
-		}
-
 		raw_spin_unlock_irqrestore(&state->lock, flags);
-
 	} else {
 		raw_spin_lock_irqsave(&_global_env.lock, flags);
-
 		res = gmp_find_by_id(&_global_env, config->id);
-		if (!res) {
-			polling_reservation_init(pres, use_edf, periodic,
-				config->polling_params.budget,
-				config->polling_params.period,
-				config->polling_params.relative_deadline,
-				config->polling_params.offset);
-			pres->res.id = config->id;
-			pres->res.blocked_by_ghost = 0;
-			pres->res.scheduled_on = NO_CPU;
-			pres->res.is_ghost = NO_CPU;
-			if (!use_edf)
-				pres->res.priority = config->priority;
-			gmp_add_new_reservation(&_global_env, &pres->res);
-			err = config->id;
-		} else {
-			err = -EEXIST;
-		}
 		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
 	}
+	if (res)
+		return -EEXIST;
 
-	if (err < 0)
-		kfree(pres);
+	err = alloc_polling_reservation(res_type, config, &res);
+	if (err)
+		return err;
+
+	/* add to appropriate environment */
+	if (config->cpu != -1) {
+		state = cpu_state_for(config->cpu);
+		raw_spin_lock_irqsave(&state->lock, flags);
+		sup_add_new_reservation(&state->sup_env, res);
+		raw_spin_unlock_irqrestore(&state->lock, flags);
+		TRACE_CUR("reservation created R%d priority : %llu\n", config->id, res->priority);
+	} else {
+		raw_spin_lock_irqsave(&_global_env.lock, flags);
+		gmp_add_new_reservation(&_global_env, res);
+		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
+	}
 
 	return err;
 }
