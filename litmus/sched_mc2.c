@@ -937,55 +937,30 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 	}
 	else
 		TRACE_TASK(tsk, "mc2_task_new() next_release = NULL\n");
+	release_at(tsk, release);
 }
 
 /* mc2_reservation_destroy - reservation_destroy system call backend
  */
 static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
 {
-	long ret = -EINVAL;
 	struct mc2_cpu_state *state;
-	struct reservation *res = NULL, *next;
-	struct sup_reservation_environment *sup_env;
-	int found = 0;
+	struct reservation *res = NULL;
 	unsigned long flags;
+	long err = 0;
 
 	if (cpu == -1) {
 		struct next_timer_event *event, *e_next;
 
 		/* if the reservation is global reservation */
+		raw_spin_lock_irqsave(&_global_env.lock, flags);
 
-		local_irq_save(flags);
-		raw_spin_lock(&_global_env.lock);
+		res = gmp_find_by_id(&_global_env, reservation_id);
+		if (res)
+			destroy_reservation(res);
+		else
+			err = -EINVAL;
 
-		list_for_each_entry_safe(res, next, &_global_env.depleted_reservations, list) {
-			if (res->id == reservation_id) {
-				list_del(&res->list);
-				kfree(res);
-				found = 1;
-				ret = 0;
-			}
-		}
-		if (!found) {
-			list_for_each_entry_safe(res, next, &_global_env.inactive_reservations, list) {
-				if (res->id == reservation_id) {
-					list_del(&res->list);
-					kfree(res);
-					found = 1;
-					ret = 0;
-				}
-			}
-		}
-		if (!found) {
-			list_for_each_entry_safe(res, next, &_global_env.active_reservations, list) {
-				if (res->id == reservation_id) {
-					list_del(&res->list);
-					kfree(res);
-					found = 1;
-					ret = 0;
-				}
-			}
-		}
 		/* delete corresponding events */
 		list_for_each_entry_safe(event, e_next, &_global_env.next_events, list) {
 			if (event->id == reservation_id) {
@@ -994,50 +969,23 @@ static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
 			}
 		}
 
-		raw_spin_unlock(&_global_env.lock);
-		local_irq_restore(flags);
+		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
 	} else {
 		/* if the reservation is partitioned reservation */
 		state = cpu_state_for(cpu);
-		local_irq_save(flags);
-		raw_spin_lock(&state->lock);
+		raw_spin_lock_irqsave(&state->lock, flags);
 
-		sup_env = &state->sup_env;
-		list_for_each_entry_safe(res, next, &sup_env->depleted_reservations, list) {
-			if (res->id == reservation_id) {
-				list_del(&res->list);
-				kfree(res);
-				found = 1;
-				ret = 0;
-			}
-		}
-		if (!found) {
-			list_for_each_entry_safe(res, next, &sup_env->inactive_reservations, list) {
-				if (res->id == reservation_id) {
-					list_del(&res->list);
-					kfree(res);
-					found = 1;
-					ret = 0;
-				}
-			}
-		}
-		if (!found) {
-			list_for_each_entry_safe(res, next, &sup_env->active_reservations, list) {
-				if (res->id == reservation_id) {
-					list_del(&res->list);
-					kfree(res);
-					found = 1;
-					ret = 0;
-				}
-			}
-		}
+		res = sup_find_by_id(&state->sup_env, reservation_id);
+		if (res)
+			destroy_reservation(res);
+		else
+			err = -EINVAL;
 
-		raw_spin_unlock(&state->lock);
-		local_irq_restore(flags);
+		raw_spin_unlock_irqrestore(&state->lock, flags);
 	}
 
-	TRACE("Rerservation destroyed ret = %d\n", ret);
-	return ret;
+	TRACE("Reservation destroyed err = %d\n", err);
+	return err;
 }
 
 /* mc2_task_exit - Task became a normal task (not real-time task)
@@ -1299,28 +1247,11 @@ static long mc2_deactivate_plugin(void)
 		/* Delete all reservations --- assumes struct reservation
 		 * is prefix of containing struct. */
 
-		while (!list_empty(&state->sup_env.active_reservations)) {
+		while (!list_empty(&state->sup_env.all_reservations)) {
 			res = list_first_entry(
-				&state->sup_env.active_reservations,
-			        struct reservation, list);
-			list_del(&res->list);
-			kfree(res);
-		}
-
-		while (!list_empty(&state->sup_env.inactive_reservations)) {
-			res = list_first_entry(
-				&state->sup_env.inactive_reservations,
-			        struct reservation, list);
-			list_del(&res->list);
-			kfree(res);
-		}
-
-		while (!list_empty(&state->sup_env.depleted_reservations)) {
-			res = list_first_entry(
-				&state->sup_env.depleted_reservations,
-			        struct reservation, list);
-			list_del(&res->list);
-			kfree(res);
+				&state->sup_env.all_reservations,
+			        struct reservation, all_list);
+			destroy_reservation(res);
 		}
 
 		raw_spin_unlock(&state->lock);
@@ -1328,28 +1259,11 @@ static long mc2_deactivate_plugin(void)
 
 	raw_spin_lock(&_global_env.lock);
 
-	while (!list_empty(&_global_env.active_reservations)) {
+	while (!list_empty(&_global_env.all_reservations)) {
 		res = list_first_entry(
-			&_global_env.active_reservations,
-				struct reservation, list);
-		list_del(&res->list);
-		kfree(res);
-	}
-
-	while (!list_empty(&_global_env.inactive_reservations)) {
-		res = list_first_entry(
-			&_global_env.inactive_reservations,
-				struct reservation, list);
-		list_del(&res->list);
-		kfree(res);
-	}
-
-	while (!list_empty(&_global_env.depleted_reservations)) {
-		res = list_first_entry(
-			&_global_env.depleted_reservations,
-				struct reservation, list);
-		list_del(&res->list);
-		kfree(res);
+			&_global_env.all_reservations,
+				struct reservation, all_list);
+		destroy_reservation(res);
 	}
 
 	while (!list_empty(&_global_env.next_events)) {

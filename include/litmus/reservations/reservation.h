@@ -122,6 +122,9 @@ struct reservation {
 	lt_t budget_consumed; /* how much budget consumed in this allocation cycle? */
 	lt_t budget_consumed_total;
 
+	/* for memory reclaimation purposes */
+	struct list_head all_list;
+
 	/* interaction with framework */
 	struct reservation_environment *env;
 	struct reservation_ops *ops;
@@ -173,6 +176,9 @@ struct sup_reservation_environment {
 	/* unordered */
 	struct list_head inactive_reservations;
 
+	/* list of all reservations */
+	struct list_head all_reservations;
+
 	/* - SUP_RESCHEDULE_NOW means call sup_dispatch() now
 	 * - SUP_NO_SCHEDULER_UPDATE means nothing to do
 	 * any other value means program a timer for the given time
@@ -201,6 +207,7 @@ struct task_struct* sup_dispatch(struct sup_reservation_environment* sup_env);
 
 struct reservation* sup_find_by_id(struct sup_reservation_environment* sup_env,
 	unsigned int id);
+void destroy_reservation(struct reservation* res);
 
 /* A global multiprocessor reservation environment. */
 
@@ -231,6 +238,9 @@ struct gmp_reservation_environment {
 
 	/* unordered */
 	struct list_head inactive_reservations;
+
+	/* list of all reservations */
+	struct list_head all_reservations;
 
 	/* timer event ordered by next_update */
 	struct list_head next_events;

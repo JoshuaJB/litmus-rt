@@ -186,6 +186,7 @@ void sup_add_new_reservation(
 	struct reservation* new_res)
 {
 	new_res->env = &sup_env->env;
+	list_add(&new_res->all_list, &sup_env->all_reservations);
 	sup_queue_reservation(sup_env, new_res);
 }
 
@@ -194,15 +195,7 @@ struct reservation* sup_find_by_id(struct sup_reservation_environment* sup_env,
 {
 	struct reservation *res;
 
-	list_for_each_entry(res, &sup_env->active_reservations, list) {
-		if (res->id == id)
-			return res;
-	}
-	list_for_each_entry(res, &sup_env->inactive_reservations, list) {
-		if (res->id == id)
-			return res;
-	}
-	list_for_each_entry(res, &sup_env->depleted_reservations, list) {
+	list_for_each_entry(res, &sup_env->all_reservations, all_list) {
 		if (res->id == id)
 			return res;
 	}
@@ -342,6 +335,7 @@ void sup_init(struct sup_reservation_environment* sup_env)
 {
 	memset(sup_env, 0, sizeof(*sup_env));
 
+	INIT_LIST_HEAD(&sup_env->all_reservations);
 	INIT_LIST_HEAD(&sup_env->active_reservations);
 	INIT_LIST_HEAD(&sup_env->depleted_reservations);
 	INIT_LIST_HEAD(&sup_env->inactive_reservations);
@@ -356,15 +350,7 @@ struct reservation* gmp_find_by_id(struct gmp_reservation_environment* gmp_env,
 {
 	struct reservation *res;
 
-	list_for_each_entry(res, &gmp_env->active_reservations, list) {
-		if (res->id == id)
-			return res;
-	}
-	list_for_each_entry(res, &gmp_env->inactive_reservations, list) {
-		if (res->id == id)
-			return res;
-	}
-	list_for_each_entry(res, &gmp_env->depleted_reservations, list) {
+	list_for_each_entry(res, &gmp_env->all_reservations, all_list) {
 		if (res->id == id)
 			return res;
 	}
@@ -550,6 +536,7 @@ void gmp_add_new_reservation(
 	struct reservation* new_res)
 {
 	new_res->env = &gmp_env->env;
+	list_add(&new_res->all_list, &gmp_env->all_reservations);
 	gmp_queue_reservation(gmp_env, new_res);
 }
 
@@ -710,6 +697,7 @@ void gmp_init(struct gmp_reservation_environment* gmp_env)
 {
 	memset(gmp_env, 0, sizeof(*gmp_env));
 
+	INIT_LIST_HEAD(&gmp_env->all_reservations);
 	INIT_LIST_HEAD(&gmp_env->active_reservations);
 	INIT_LIST_HEAD(&gmp_env->depleted_reservations);
 	INIT_LIST_HEAD(&gmp_env->inactive_reservations);
@@ -722,3 +710,10 @@ void gmp_init(struct gmp_reservation_environment* gmp_env)
 
 	raw_spin_lock_init(&gmp_env->lock);
 }
+
+void destroy_reservation(struct reservation* res) {
+	list_del(&res->list);
+	list_del(&res->all_list);
+	kfree(res);
+}
+
