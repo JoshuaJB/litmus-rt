@@ -372,20 +372,6 @@ struct next_timer_event* gmp_find_event_by_id(struct gmp_reservation_environment
 	return NULL;
 }
 
-
-struct next_timer_event* gmp_find_event_by_time(struct gmp_reservation_environment* gmp_env,
-	lt_t when)
-{
-	struct next_timer_event *event;
-
-	list_for_each_entry(event, &gmp_env->next_events, list) {
-		if (event->next_update == when)
-			return event;
-	}
-
-	return NULL;
-}
-
 #define TIMER_RESOLUTION 100000L
 
 static void gmp_add_event(
@@ -396,9 +382,7 @@ static void gmp_add_event(
 	struct list_head *pos;
 	int found = 0, update = 0;
 
-	//when = div64_u64(when, TIMER_RESOLUTION);
-	//when *= TIMER_RESOLUTION;
-//printk(KERN_ALERT "GMP_ADD id=%d type=%d when=%llu\n", id, type, when);
+	// XXX: This only works because we can have at most two types of timers
 	nevent = gmp_find_event_by_id(gmp_env, id);
 
 	if (nevent)
@@ -585,7 +569,7 @@ static void gmp_charge_budget(
 	}
 	//TRACE("finished charging budgets\n");
 }
-#else
+#else // No budget enforcement
 
 static void gmp_charge_budget(
 	struct gmp_reservation_environment* gmp_env,
