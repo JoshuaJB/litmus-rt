@@ -209,12 +209,11 @@ struct reservation* sup_find_by_id(struct sup_reservation_environment* sup_env,
 	unsigned int id);
 void destroy_reservation(struct reservation* res);
 
-/* A global multiprocessor reservation environment. */
+/* A global multiprocessor (GMP) reservation environment. */
 
 typedef enum {
 	EVENT_REPLENISH = 0,
 	EVENT_DRAIN,
-	EVENT_OTHERS,
 } event_type_t;
 
 
@@ -260,7 +259,6 @@ void gmp_print_events(struct gmp_reservation_environment* gmp_env, lt_t now);
 int gmp_update_time(struct gmp_reservation_environment* gmp_env, lt_t now);
 struct task_struct* gmp_dispatch(struct gmp_reservation_environment* gmp_env);
 struct next_timer_event* gmp_find_event_by_id(struct gmp_reservation_environment* gmp_env, unsigned int id);
-struct next_timer_event* gmp_find_event_by_time(struct gmp_reservation_environment* gmp_env, lt_t when);
 struct reservation* gmp_find_by_id(struct gmp_reservation_environment* gmp_env,
 	unsigned int id);
 
