@@ -29,6 +29,16 @@ struct task_struct* default_dispatch_client(
 	list_for_each_entry_safe(client, next, &res->clients, list) {
 		tsk = client->dispatch(client);
 		if (likely(tsk)) {
+			/* Primitive form of round-robin scheduling:
+			 * make sure we alternate between multiple clients
+			 * with at least the granularity of the replenishment
+			 * period. Reservations that need more fine-grained
+			 * or more predictable alternation between threads
+			 * within a reservation should provide a custom
+			 * dispatch function. */
+			list_del(&client->list);
+			/* move to back of list */
+			list_add_tail(&client->list, &res->clients);
 			return tsk;
 		}
 	}
