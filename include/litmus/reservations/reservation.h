@@ -124,6 +124,7 @@ struct reservation_ops {
 struct reservation {
 	/* used to queue in environment */
 	struct list_head list;
+	struct list_head replenish_list;
 
 	reservation_state_t state;
 	unsigned int id;

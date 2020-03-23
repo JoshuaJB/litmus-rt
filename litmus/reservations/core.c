@@ -12,6 +12,8 @@ void reservation_init(struct reservation *res)
 	memset(res, 0, sizeof(*res));
 	res->state = RESERVATION_INACTIVE;
 	INIT_LIST_HEAD(&res->clients);
+	INIT_LIST_HEAD(&res->replenish_list);
+	budget_notifier_list_init(&res->budget_notifiers);
 }
 
 struct task_struct* default_dispatch_client(
@@ -99,6 +101,8 @@ static int _sup_queue_depleted(
 	struct reservation *queued;
 	int passed_earlier = 0;
 
+	BUG_ON(in_list(&res->replenish_list));
+
 	list_for_each(pos, &sup_env->depleted_reservations) {
 		queued = list_entry(pos, struct reservation, list);
 		if (queued->next_replenishment > res->next_replenishment) {
@@ -156,8 +160,8 @@ static void sup_queue_active(
 		sup_env->next_scheduler_update = SUP_RESCHEDULE_NOW;
 	else {
 		/* Active means this reservation is draining budget => make sure
-		 * the scheduler is called to notice when the reservation budget has been
-		 * drained completely. */
+		 * the scheduler is called to notice when the reservation
+		 * budget has been drained completely. */
 		sup_scheduler_update_after(sup_env, res->cur_budget);
 	}
 }
@@ -248,6 +252,9 @@ static void sup_replenish_budgets(struct sup_reservation_environment* sup_env)
 	list_for_each_safe(pos, next, &sup_env->depleted_reservations) {
 		res = list_entry(pos, struct reservation, list);
 		if (res->next_replenishment <= sup_env->env.current_time) {
+			TRACE("R%d: replenishing budget at %llu, "
+			      "priority: %llu\n",
+				res->id, res->env->current_time, res->priority);
 			res->ops->replenish(res);
 		} else {
 			/* list is ordered by increasing depletion times */
@@ -302,7 +309,7 @@ struct task_struct* sup_dispatch(struct sup_reservation_environment* sup_env)
 			tsk = res->ops->dispatch_client(res, &time_slice);
 			if (likely(tsk)) {
 				if (time_slice)
-				    sup_scheduler_update_after(sup_env, time_slice);
+					sup_scheduler_update_after(sup_env, time_slice);
 				sup_scheduler_update_after(sup_env, res->cur_budget);
 				return tsk;
 			}
@@ -323,6 +330,15 @@ static void sup_res_change_state(
 
 	TRACE("reservation R%d state %d->%d at %llu\n",
 		res->id, res->state, new_state, env->current_time);
+
+	if (new_state == RESERVATION_DEPLETED
+	    && (res->state == RESERVATION_ACTIVE ||
+	        res->state == RESERVATION_ACTIVE_IDLE)) {
+		budget_notifiers_fire(&res->budget_notifiers, false);
+	} else if (res->state == RESERVATION_DEPLETED
+	        && new_state == RESERVATION_ACTIVE) {
+		budget_notifiers_fire(&res->budget_notifiers, true);
+	}
 
 	list_del(&res->list);
 	/* check if we need to reschedule because we lost an active reservation */
