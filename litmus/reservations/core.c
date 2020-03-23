@@ -2,6 +2,7 @@
 #include <linux/slab.h>
 
 #include <litmus/litmus.h>
+#include <litmus/debug_trace.h>
 #include <litmus/reservations/reservation.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
@@ -54,7 +55,7 @@ void common_drain_budget(
 		case RESERVATION_ACTIVE:
 			if (!res->cur_budget) {
 				res->env->change_state(res->env, res,
-					RESERVATION_DEPLETED);
+						RESERVATION_DEPLETED);
 			} /* else: stay in current state */
 			break;
 	}
@@ -231,7 +232,8 @@ static void sup_charge_budget(
 		{
 			/* make sure scheduler is invoked when this reservation expires
 			 * its remaining budget */
-			 TRACE("requesting scheduler update for reservation %u in %llu nanoseconds\n",
+			 TRACE("requesting scheduler update for reservation %u "
+				"in %llu nanoseconds\n",
 				res->id, res->cur_budget);
 			 sup_scheduler_update_after(sup_env, res->cur_budget);
 		}
@@ -252,7 +254,6 @@ static void sup_replenish_budgets(struct sup_reservation_environment* sup_env)
 			break;
 		}
 	}
-	//TRACE("finished replenishing budgets\n");
 
 	/* request a scheduler update at the next replenishment instant */
 	res = list_first_entry_or_null(&sup_env->depleted_reservations,
@@ -331,6 +332,16 @@ static void sup_res_change_state(
 	sup_queue_reservation(sup_env, res);
 }
 
+static void sup_request_replenishment(
+	struct reservation_environment* env,
+	struct reservation *res)
+{
+	struct sup_reservation_environment* sup_env;
+
+	sup_env = container_of(env, struct sup_reservation_environment, env);
+	sup_queue_depleted(sup_env, res);
+}
+
 void sup_init(struct sup_reservation_environment* sup_env)
 {
 	memset(sup_env, 0, sizeof(*sup_env));
@@ -341,6 +352,7 @@ void sup_init(struct sup_reservation_environment* sup_env)
 	INIT_LIST_HEAD(&sup_env->inactive_reservations);
 
 	sup_env->env.change_state = sup_res_change_state;
+	sup_env->env.request_replenishment = sup_request_replenishment;
 
 	sup_env->next_scheduler_update = SUP_NO_SCHEDULER_UPDATE;
 }
@@ -698,6 +710,8 @@ void gmp_init(struct gmp_reservation_environment* gmp_env)
 void destroy_reservation(struct reservation* res) {
 	list_del(&res->list);
 	list_del(&res->all_list);
+	if (res->ops->shutdown)
+		res->ops->shutdown(res);
 	kfree(res);
 }
 

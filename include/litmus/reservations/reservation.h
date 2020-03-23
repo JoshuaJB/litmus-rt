@@ -4,6 +4,9 @@
 #include <linux/list.h>
 #include <linux/hrtimer.h>
 
+#include <litmus/debug_trace.h>
+#include <litmus/reservations/budget-notifier.h>
+
 struct reservation_client;
 struct reservation_environment;
 struct reservation;
@@ -51,6 +54,13 @@ typedef void (*reservation_change_state_t)  (
 	reservation_state_t new_state
 );
 
+/* Called by reservations to request replenishment while not DEPLETED.
+ * Useful for soft reservations that remain ACTIVE with lower priority. */
+typedef void (*request_replenishment_t)(
+	struct reservation_environment* env,
+	struct reservation *res
+);
+
 /* The framework within wich reservations operate. */
 struct reservation_environment {
 	lt_t time_zero;
@@ -58,8 +68,8 @@ struct reservation_environment {
 
 	/* services invoked by reservations */
 	reservation_change_state_t change_state;
+	request_replenishment_t request_replenishment;
 };
-
 
 /* ************************************************************************** */
 
@@ -94,6 +104,8 @@ typedef struct task_struct* (*dispatch_client_t)  (
 	                    some amount of time. 0 => no limit */
 );
 
+/* Destructor: called before scheduler is deactivated. */
+typedef void (*shutdown_t)(struct reservation *reservation);
 
 struct reservation_ops {
 	dispatch_client_t dispatch_client;
@@ -103,7 +115,11 @@ struct reservation_ops {
 
 	on_replenishment_timer_t replenish;
 	drain_budget_t drain_budget;
+
+	shutdown_t shutdown;
 };
+
+#define RESERVATION_BACKGROUND_PRIORITY ULLONG_MAX
 
 struct reservation {
 	/* used to queue in environment */
@@ -122,7 +138,10 @@ struct reservation {
 	lt_t budget_consumed; /* how much budget consumed in this allocation cycle? */
 	lt_t budget_consumed_total;
 
-	/* for memory reclaimation purposes */
+	/* list of registered budget callbacks */
+	struct budget_notifier_list budget_notifiers;
+
+	/* for memory reclamation purposes */
 	struct list_head all_list;
 
 	/* interaction with framework */

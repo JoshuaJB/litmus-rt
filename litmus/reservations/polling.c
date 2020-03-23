@@ -4,6 +4,7 @@
 #include <litmus/reservations/reservation.h>
 #include <litmus/reservations/polling.h>
 
+
 static void periodic_polling_client_arrives(
 	struct reservation* res,
 	struct reservation_client *client
@@ -65,9 +66,7 @@ static void periodic_polling_client_departs(
 		case RESERVATION_ACTIVE:
 			if (list_empty(&res->clients)) {
 				res->env->change_state(res->env, res,
-					res->cur_budget ?
-						RESERVATION_ACTIVE_IDLE :
-						RESERVATION_DEPLETED);
+						RESERVATION_ACTIVE_IDLE);
 			} /* else: nothing to do, more clients ready */
 			break;
 
@@ -261,4 +260,3 @@ void polling_reservation_init(
 			pres->res.ops = &sporadic_polling_ops_fp;
 	}
 }
-
