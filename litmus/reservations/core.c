@@ -114,15 +114,15 @@ static int _sup_queue_depleted(
 	BUG_ON(in_list(&res->replenish_list));
 
 	list_for_each(pos, &sup_env->depleted_reservations) {
-		queued = list_entry(pos, struct reservation, list);
+		queued = list_entry(pos, struct reservation, replenish_list);
 		if (queued->next_replenishment > res->next_replenishment) {
-			list_add(&res->list, pos->prev);
+			list_add(&res->replenish_list, pos->prev);
 			return passed_earlier;
 		} else
 			passed_earlier = 1;
 	}
 
-	list_add_tail(&res->list, &sup_env->depleted_reservations);
+	list_add_tail(&res->replenish_list, &sup_env->depleted_reservations);
 
 	return passed_earlier;
 }
@@ -260,7 +260,7 @@ static void sup_replenish_budgets(struct sup_reservation_environment* sup_env)
 	struct reservation *res;
 
 	list_for_each_safe(pos, next, &sup_env->depleted_reservations) {
-		res = list_entry(pos, struct reservation, list);
+		res = list_entry(pos, struct reservation, replenish_list);
 		if (res->next_replenishment <= sup_env->env.current_time) {
 			TRACE("R%d: replenishing budget at %llu, "
 			      "priority: %llu\n",
@@ -274,7 +274,7 @@ static void sup_replenish_budgets(struct sup_reservation_environment* sup_env)
 
 	/* request a scheduler update at the next replenishment instant */
 	res = list_first_entry_or_null(&sup_env->depleted_reservations,
-		struct reservation, list);
+		struct reservation, replenish_list);
 	if (res)
 		sup_scheduler_update_at(sup_env, res->next_replenishment);
 }
@@ -350,7 +350,12 @@ static void sup_res_change_state(
 		budget_notifiers_fire(&res->budget_notifiers, true);
 	}
 
-	list_del(&res->list);
+	/* dequeue prior to re-queuing */
+	if (res->state == RESERVATION_DEPLETED)
+		list_del(&res->replenish_list);
+	else
+		list_del(&res->list);
+
 	/* check if we need to reschedule because we lost an active reservation */
 	if (res->state == RESERVATION_ACTIVE && !sup_env->will_schedule)
 		sup_env->next_scheduler_update = SUP_RESCHEDULE_NOW;
