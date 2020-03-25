@@ -21,15 +21,11 @@ static void periodic_polling_client_arrives(
 			/* Figure out next replenishment time. */
 			tmp = res->env->current_time - res->env->time_zero;
 			instances =  div64_u64(tmp, pres->period);
-			if (res->env->time_zero == 0)
-				res->next_replenishment =
-					(instances + 1) * pres->period + pres->offset;
-			else
-				res->next_replenishment = res->env->time_zero + instances * pres->period;
+			res->next_replenishment =
+				(instances + 1) * pres->period + pres->offset;
 
-			TRACE("ENV_TIME_ZERO %llu\n", res->env->time_zero);
-			TRACE("pol-res: R%d activate tmp=%llu instances=%llu period=%llu nextrp=%llu cur=%llu\n",
-				res->id, tmp, instances, pres->period, res->next_replenishment,
+			TRACE("pol-res: activate tmp=%llu instances=%llu period=%llu nextrp=%llu cur=%llu\n",
+				tmp, instances, pres->period, res->next_replenishment,
 				res->env->current_time);
 
 			res->env->change_state(res->env, res,
