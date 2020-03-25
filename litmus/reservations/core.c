@@ -67,7 +67,7 @@ void common_drain_budget(
 		case RESERVATION_ACTIVE:
 			if (!res->cur_budget) {
 				res->env->change_state(res->env, res,
-						RESERVATION_DEPLETED);
+					RESERVATION_DEPLETED);
 			} /* else: stay in current state */
 			break;
 	}
@@ -146,15 +146,23 @@ static int _sup_queue_active(
 	struct reservation *queued;
 	int passed_active = 0;
 
-	list_for_each(pos, &sup_env->active_reservations) {
-		queued = list_entry(pos, struct reservation, list);
-		if (queued->priority > res->priority) {
-			list_add(&res->list, pos->prev);
-			return passed_active;
-		} else if (queued->state == RESERVATION_ACTIVE)
-			passed_active = 1;
+	if (likely(res->priority != RESERVATION_BACKGROUND_PRIORITY)) {
+		/* enqueue in order of priority */
+		list_for_each(pos, &sup_env->active_reservations) {
+			queued = list_entry(pos, struct reservation, list);
+			if (queued->priority > res->priority) {
+				list_add(&res->list, pos->prev);
+				return passed_active;
+			} else if (queued->state == RESERVATION_ACTIVE)
+				passed_active = 1;
+		}
+	} else {
+		/* don't preempt unless the list happens to be empty */
+		passed_active = !list_empty(&sup_env->active_reservations);
 	}
-
+	/* Either a background reservation, or we fell off the end of the list.
+	 * In both cases, just add the reservation to the end of the list of
+	 * active reservations. */
 	list_add_tail(&res->list, &sup_env->active_reservations);
 	return passed_active;
 }
@@ -168,8 +176,9 @@ static void sup_queue_active(
 	/* check for possible preemption */
 	if (res->state == RESERVATION_ACTIVE && !passed_active)
 		sup_env->next_scheduler_update = SUP_RESCHEDULE_NOW;
-	else {
-		/* Active means this reservation is draining budget => make sure
+	else if (res == list_first_entry(&sup_env->active_reservations,
+	                                 struct reservation, list)) {
+		/* First reservation is draining budget => make sure
 		 * the scheduler is called to notice when the reservation
 		 * budget has been drained completely. */
 		sup_scheduler_update_after(sup_env, res->cur_budget);
@@ -222,35 +231,33 @@ static void sup_charge_budget(
 	struct sup_reservation_environment* sup_env,
 	lt_t delta)
 {
-	struct list_head *pos, *next;
 	struct reservation *res;
 
-	int encountered_active = 0;
+	/* charge the highest-priority ACTIVE or ACTIVE_IDLE reservation */
 
-	list_for_each_safe(pos, next, &sup_env->active_reservations) {
-		/* charge all ACTIVE_IDLE up to the first ACTIVE reservation */
-		res = list_entry(pos, struct reservation, list);
-		if (res->state == RESERVATION_ACTIVE) {
-			TRACE("sup_charge_budget ACTIVE R%u drain %llu\n", res->id, delta);
-			if (encountered_active == 0) {
-				TRACE("DRAIN !!\n");
-				res->ops->drain_budget(res, delta);
-				encountered_active = 1;
-			}
-		} else {
-			TRACE("sup_charge_budget INACTIVE R%u drain %llu\n", res->id, delta);
-			res->ops->drain_budget(res, delta);
-		}
-		if (res->state == RESERVATION_ACTIVE ||
-			res->state == RESERVATION_ACTIVE_IDLE)
-		{
-			/* make sure scheduler is invoked when this reservation expires
-			 * its remaining budget */
-			 TRACE("requesting scheduler update for reservation %u "
-				"in %llu nanoseconds\n",
-				res->id, res->cur_budget);
-			 sup_scheduler_update_after(sup_env, res->cur_budget);
-		}
+	res = list_first_entry_or_null(
+		&sup_env->active_reservations, struct reservation, list);
+
+	if (res) {
+		TRACE("R%d: charging at %llu for %llu execution, budget before: %llu\n",
+			res->id, res->env->current_time, delta, res->cur_budget);
+		res->ops->drain_budget(res, delta);
+		TRACE("R%d: budget now: %llu, priority: %llu\n",
+			res->id, res->cur_budget, res->priority);
+	}
+
+	/* check when the next budget expires */
+
+	res = list_first_entry_or_null(
+		&sup_env->active_reservations, struct reservation, list);
+
+	if (res) {
+		/* make sure scheduler is invoked when this reservation expires
+		 * its remaining budget */
+		TRACE("requesting scheduler update for reservation %u "
+			"in %llu nanoseconds\n",
+			res->id, res->cur_budget);
+		sup_scheduler_update_after(sup_env, res->cur_budget);
 	}
 }
 
@@ -319,7 +326,7 @@ struct task_struct* sup_dispatch(struct sup_reservation_environment* sup_env)
 			tsk = res->ops->dispatch_client(res, &time_slice);
 			if (likely(tsk)) {
 				if (time_slice)
-					sup_scheduler_update_after(sup_env, time_slice);
+				    sup_scheduler_update_after(sup_env, time_slice);
 				sup_scheduler_update_after(sup_env, res->cur_budget);
 				return tsk;
 			}
@@ -346,7 +353,7 @@ static void sup_res_change_state(
 	        res->state == RESERVATION_ACTIVE_IDLE)) {
 		budget_notifiers_fire(&res->budget_notifiers, false);
 	} else if (res->state == RESERVATION_DEPLETED
-	        && new_state == RESERVATION_ACTIVE) {
+	           && new_state == RESERVATION_ACTIVE) {
 		budget_notifiers_fire(&res->budget_notifiers, true);
 	}
 
