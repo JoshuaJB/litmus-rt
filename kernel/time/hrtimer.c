@@ -1590,7 +1590,7 @@ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
 				((s64) CONFIG_REPORT_TIMER_LATENCY_THRESHOLD))) {
 				printk_ratelimited(KERN_WARNING "WARNING: "
 					"P%d timer latency: %lld now: %lld "
-					"basenow:%lld exp:%lld "
+					"basenow:%lld exp:%lld soft-exp:%lld "
 					"nxt:%lld added:%lld "
 					"timer:%p fn:%p\n",
 					smp_processor_id(),
