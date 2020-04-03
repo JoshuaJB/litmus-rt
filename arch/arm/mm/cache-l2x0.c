@@ -733,6 +733,7 @@ static void __init l2c310_fixup(void __iomem *base, u32 cache_id,
 
 	if (n) {
 		unsigned i;
+
 		pr_info("L2C-310 errat%s", n > 1 ? "a" : "um");
 		for (i = 0; i < n; i++)
 			pr_cont(" %s", errata[i]);
@@ -888,7 +889,6 @@ static int __init __l2c_init(const struct l2c_init_data *data,
 		data->type, cache_id, aux);
 
 	litmus_setup_lockdown(l2x0_base, cache_id);
-	
 	return 0;
 }
 

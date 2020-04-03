@@ -1620,7 +1620,6 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 
 		/* Isochronous endpoint, select the alternate setting. */
 		bandwidth = stream->ctrl.dwMaxPayloadTransferSize;
-		//bandwidth = 1;
 
 		if (bandwidth == 0) {
 			uvc_trace(UVC_TRACE_VIDEO, "Device requested null "

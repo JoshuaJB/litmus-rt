@@ -190,6 +190,7 @@ int page_referenced(struct page *, int is_locked,
 int try_to_unmap(struct page *, enum ttu_flags flags);
 int try_to_unmap_one_only(struct page *page, struct vm_area_struct *vma,
 		     unsigned long address, void *arg);
+
 /*
  * Used by uprobes to replace a userspace page safely
  */

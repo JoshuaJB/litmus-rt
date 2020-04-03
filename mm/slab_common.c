@@ -710,9 +710,7 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name, size_t size,
 		panic("Out of memory when creating slab %s\n", name);
 
 	create_boot_cache(s, name, size, flags);
-
 	list_add(&s->list, &slab_caches);
-
 	s->refcount = 1;
 	return s;
 }

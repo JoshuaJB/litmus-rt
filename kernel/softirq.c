@@ -278,7 +278,7 @@ restart:
 		trace_softirq_entry(vec_nr);
 		if (vec_nr == 3)
 			TS_NET_RX_SOFTIRQ_START;
-		h->action(h); //net_rx_action()
+		h->action(h);
 		if (vec_nr == 3)
 			TS_NET_RX_SOFTIRQ_END;
 		trace_softirq_exit(vec_nr);

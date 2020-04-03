@@ -449,6 +449,7 @@ static long mc2_complete_job(void)
 
 	/* If this the first job instance, we need to reset replenish
 	   time to the next release time */
+	// This is a loose clone of prepare_for_next_period from jobs.c
 	if (tsk_rt(current)->sporadic_release) {
 		struct mc2_cpu_state *state;
 		struct reservation_environment *env;

@@ -576,6 +576,7 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
  *
  * -- nyc
  */
+
 static inline void __free_one_page(struct page *page,
 		unsigned long pfn,
 		struct zone *zone, unsigned int order,
@@ -1146,6 +1147,9 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 			if (offset == 0) {
 				expand(zone, page, order, current_order, area, migratetype);
 			} else {
+				// We found a page larger than MAX_CONTIG_ORDER that needs
+				// to be split. This puts all the other pages resulting from
+				// the split in our free list.
 				int frac = expand_middle(zone, page, offset, order, current_order, area, migratetype);
 				page = &page[offset];
 				//list_del(&page->lru);
@@ -1839,6 +1843,7 @@ void free_hot_cold_page(struct page *page, bool cold)
 		free_pcppages_bulk(zone, batch, pcp);
 		pcp->count -= batch;
 	}
+
 out:
 	local_irq_restore(flags);
 }

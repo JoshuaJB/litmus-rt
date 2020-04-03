@@ -207,6 +207,7 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 	 */
 	for (plane = 0; plane < vb->num_planes; ++plane) {
 		unsigned long size = PAGE_ALIGN(q->plane_sizes[plane]);
+
 		printk(KERN_INFO "__vb2_buf_mem_alloc(): size %ld, func %pF GFP_COLOR? %d\n", size, vb->vb2_queue->mem_ops->alloc, q->gfp_flags|VB2_CORE_FLAG);
 		mem_priv = call_ptr_memop(vb, alloc, q->alloc_ctx[plane],
 				      size, dma_dir, q->gfp_flags|VB2_CORE_FLAG);
@@ -411,6 +412,7 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum v4l2_memory memory,
 			buffer, num_planes);
 	printk(KERN_INFO "allocated %d buffers, %d plane(s) each\n",
 			buffer, num_planes);
+
 	return buffer;
 }
 

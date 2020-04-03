@@ -153,10 +153,10 @@ feather_callback void save_cpu_task_latency(unsigned long event, unsigned long w
 #define TS_UVC_IRQ_START			CPU_TIMESTAMP_CUR(198)
 #define TS_UVC_IRQ_END				CPU_TIMESTAMP_CUR(199)
 
-#define TS_RELEASE_LATENCY(when)    CPU_LTIMESTAMP(208, &(when))
-#define TS_RELEASE_LATENCY_A(when)  CPU_LTIMESTAMP(209, &(when))
-#define TS_RELEASE_LATENCY_B(when)  CPU_LTIMESTAMP(210, &(when))
-#define TS_RELEASE_LATENCY_C(when)  CPU_LTIMESTAMP(211, &(when))
+#define TS_RELEASE_LATENCY(when)	CPU_LTIMESTAMP(208, &(when))
+#define TS_RELEASE_LATENCY_A(when)	CPU_LTIMESTAMP(209, &(when))
+#define TS_RELEASE_LATENCY_B(when)	CPU_LTIMESTAMP(210, &(when))
+#define TS_RELEASE_LATENCY_C(when)	CPU_LTIMESTAMP(211, &(when))
 
 #define TS_SCHED_A_START			CPU_DTIMESTAMP(212, TSK_UNKNOWN)
 #define TS_SCHED_A_END(t)			CPU_TTIMESTAMP(213, t)

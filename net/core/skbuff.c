@@ -534,7 +534,6 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
 	struct sk_buff *skb;
 
 	length += NET_SKB_PAD;
-
 	skb = __alloc_rx_skb(length, gfp_mask | SKB_FLAG, 0);
 
 	if (likely(skb)) {

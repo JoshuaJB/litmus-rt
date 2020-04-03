@@ -258,6 +258,7 @@ static struct page *__dma_alloc_buffer(struct device *dev, size_t size, gfp_t gf
 
 	page = alloc_pages(gfp, order);
 	if (!page)
+
 		return NULL;
 	/*
 	 * Now split the huge page and free the excess pages

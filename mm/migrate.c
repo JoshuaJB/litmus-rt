@@ -928,9 +928,9 @@ static int copy_to_new_page(struct page *newpage, struct page *page,
 	if (rc != MIGRATEPAGE_SUCCESS) {
 		newpage->mapping = NULL;
 	} else {
-		if (page_was_mapped) {
+		// Removing the migration PTEs does not adversely effect the old page
+		if (page_was_mapped)
 			remove_migration_ptes(page, newpage);
-		}
 	}
 
 	unlock_page(newpage);
@@ -1304,7 +1304,6 @@ static ICE_noinline int unmap_and_copy(new_page_t get_new_page,
 		lib_page->r_page[cpu] = newpage;
 		lib_page->r_pfn[cpu] = page_to_pfn(newpage);
 	}
-
 out:
 	/*
 	 * If migration was not successful and there's a freeing callback, use

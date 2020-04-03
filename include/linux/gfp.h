@@ -36,7 +36,7 @@ struct vm_area_struct;
 #define ___GFP_OTHER_NODE	0x800000u
 #define ___GFP_WRITE		0x1000000u
 #define ___GFP_COLOR		0x2000000u
-#define ___GFP_CPU1			0x4000000u
+#define ___GFP_CPU1		0x4000000u
 /* If the above are modified, __GFP_BITS_SHIFT may need updating */
 
 /*
