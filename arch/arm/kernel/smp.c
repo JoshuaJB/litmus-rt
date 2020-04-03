@@ -46,6 +46,7 @@
 #include <asm/virt.h>
 #include <asm/mach/arch.h>
 #include <asm/mpu.h>
+#include <linux/kutrace.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
@@ -580,6 +581,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 	if ((unsigned)ipinr < NR_IPI) {
 		trace_ipi_entry(ipi_types[ipinr]);
 		__inc_irq_stat(cpu, ipi_irqs[ipinr]);
+		kutrace1(KUTRACE_IRQ + ipinr + 64, 0);
 	}
 
 	switch (ipinr) {
@@ -638,8 +640,10 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		break;
 	}
 
-	if ((unsigned)ipinr < NR_IPI)
+	if ((unsigned)ipinr < NR_IPI) {
 		trace_ipi_exit(ipi_types[ipinr]);
+		kutrace1(KUTRACE_IRQRET + ipinr + 64, 0);
+	}
 	set_irq_regs(old_regs);
 }
 

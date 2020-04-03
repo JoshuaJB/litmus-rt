@@ -26,6 +26,7 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/irq.h>
+#include <linux/kutrace.h>
 
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
@@ -573,6 +574,9 @@ do_cache_op(unsigned long start, unsigned long end, int flags)
 asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 {
 	siginfo_t info;
+#ifdef CONFIG_KUTRACE
+	u64 cmd, arg;
+#endif
 
 	if ((no >> 16) != (__ARM_NR_BASE>> 16))
 		return bad_syscall(no, regs);
@@ -624,7 +628,16 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 	case NR(set_tls):
 		set_tls(regs->ARM_r0);
 		return 0;
-
+#ifdef CONFIG_KUTRACE
+	case NR(kutrace):
+		cmd = regs->ARM_r0;
+		cmd <<= 32;
+		cmd |= regs->ARM_r1;
+		arg = regs->ARM_r2;
+		arg <<= 32;
+		arg |= regs->ARM_r3;
+		return (*kutrace_global_ops.kutrace_trace_control)(cmd, arg);
+#endif
 #ifdef CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG
 	/*
 	 * Atomically store r1 in *r2 if *r2 is equal to r0 for user space.

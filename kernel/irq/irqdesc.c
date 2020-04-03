@@ -15,6 +15,7 @@
 #include <linux/radix-tree.h>
 #include <linux/bitmap.h>
 #include <linux/irqdomain.h>
+#include <linux/kutrace.h>
 
 #include "internals.h"
 
@@ -348,7 +349,9 @@ int generic_handle_irq(unsigned int irq)
 
 	if (!desc)
 		return -EINVAL;
+	kutrace1(KUTRACE_IRQ + (irq >> 4 & 0xFF), 0);
 	generic_handle_irq_desc(irq, desc);
+	kutrace1(KUTRACE_IRQRET + (irq >> 4 & 0xFF), 0);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(generic_handle_irq);

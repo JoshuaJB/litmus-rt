@@ -12,6 +12,7 @@
 #include <asm/unistd.h>
 #include <asm/ftrace.h>
 #include <asm/unwind.h>
+#include <linux/kutrace.h>
 
 #ifdef CONFIG_NEED_RET_TO_USER
 #include <mach/entry-macro.S>
@@ -19,6 +20,24 @@
 	.macro  arch_ret_to_user, tmp1, tmp2
 	.endm
 #endif
+
+	/* This mirrors the conventions used for restore_user_regs.
+	 * scno should still contain the system-call number as loaded
+	 * by vector_swi. This is likely not very efficient because
+	 * we currently store and then restore all registers. */
+	.macro  kutrace_syscall_exit, offset
+#ifdef CONFIG_KUTRACE
+	ldr	r1, [sp, #\offset + S_R1]	@ load first argument
+	lsl	r1, r1, #16						@ but only first 16 bits
+	lsr	r1, r1, #16
+	stmdb	sp!, {r0 - r12}			@ store all registers
+	mov	r0, #KUTRACE_SYSRET64
+	/* We do not duplicate kutrace_map_nr in assembly */
+	orr	r0, r0, scno
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}			@ restore all registers
+#endif
+	.endm
 
 #include "entry-header.S"
 
@@ -39,6 +58,7 @@ ret_fast_syscall:
 	tst	r1, #_TIF_WORK_MASK
 	bne	fast_work_pending
 	asm_trace_hardirqs_on
+	kutrace_syscall_exit offset = S_OFF
 
 	/* perform architecture specific actions before user return */
 	arch_ret_to_user r1, lr
@@ -74,6 +94,7 @@ ENTRY(ret_to_user_from_irq)
 	bne	work_pending
 no_work_pending:
 	asm_trace_hardirqs_on
+	kutrace_syscall_exit, offset = 0
 
 	/* perform architecture specific actions before user return */
 	arch_ret_to_user r1, lr
@@ -196,6 +217,18 @@ local_restart:
 
 	tst	r10, #_TIF_SYSCALL_WORK		@ are we tracing syscalls?
 	bne	__sys_trace
+
+#ifdef CONFIG_KUTRACE
+	stmdb	sp!, {r0 - r12}	@ Store all general registers
+	mov	r1, r0				@ Save first argument
+	lsl	r1, r1, #16			@ (but only first 16 bits)
+	lsr	r1, r1, #16
+	mov	r0, #KUTRACE_SYSCALL64
+	/* We do not duplicate kutrace_map_nr in assembly */
+	orr	r0, r0, scno
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}	@ Restore all registers, callee restores sp
+#endif
 
 	cmp	scno, #NR_syscalls		@ check upper syscall limit
 	adr	lr, BSYM(ret_fast_syscall)	@ return address

@@ -2128,3 +2128,9 @@ config ARCH_HAS_SEND_PULL_TIMERS
 
 source "litmus/Kconfig"
 
+config KUTRACE
+	tristate "kernel/user tracing"
+	depends on ARM
+	default m
+	---help---
+	  Enables kernel/user tracing patches

@@ -33,6 +33,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
 
+#include <linux/kutrace.h>
+
 /*
    - No shared variables, all the data are CPU local.
    - If a softirq needs serialization, let it serialize itself
@@ -275,6 +277,8 @@ restart:
 
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
+		kutrace1(KUTRACE_IRQ + KUTRACE_BOTTOM_HALF, vec_nr);
+
 		trace_softirq_entry(vec_nr);
 		if (vec_nr == 3)
 			TS_NET_RX_SOFTIRQ_START;
@@ -282,6 +286,9 @@ restart:
 		if (vec_nr == 3)
 			TS_NET_RX_SOFTIRQ_END;
 		trace_softirq_exit(vec_nr);
+
+		kutrace1(KUTRACE_IRQRET + KUTRACE_BOTTOM_HALF, 0);
+
 		if (unlikely(prev_count != preempt_count())) {
 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",
 			       vec_nr, softirq_to_name[vec_nr], h->action,

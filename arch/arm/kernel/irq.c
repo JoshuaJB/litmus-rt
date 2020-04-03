@@ -46,6 +46,7 @@
 
 #include <litmus/cache_proc.h>
 #include <litmus/litmus.h>
+#include <linux/kutrace.h>
 
 unsigned long irq_err_count;
 
@@ -69,9 +70,13 @@ int arch_show_interrupts(struct seq_file *p, int prec)
  */
 void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 {
+	/* We have to mask the IRQ to make sure that it doesn't
+	 * exceed its mask of 0x0500 */
+	kutrace1(KUTRACE_IRQ + (irq >> 4 & 0xFF), 0);
 	enter_irq_mode();
 	__handle_domain_irq(NULL, irq, false, regs);
 	exit_irq_mode();
+	kutrace1(KUTRACE_IRQRET + (irq >> 4 & 0xFF), 0);
 }
 
 /*

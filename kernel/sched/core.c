@@ -96,6 +96,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+#include <linux/kutrace.h>
+
 void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period)
 {
 	unsigned long delta;
@@ -1693,6 +1695,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	if (!(p->state & state))
 		goto out;
 
+	kutrace1(KUTRACE_RUNNABLE, p->pid);
+
 	success = 1; /* we're going to change ->state */
 	cpu = task_cpu(p);
 
@@ -1769,6 +1773,8 @@ static void try_to_wake_up_local(struct task_struct *p)
 
 	if (!(p->state & TASK_NORMAL))
 		goto out;
+
+	kutrace1(KUTRACE_RUNNABLE, p->pid);
 
 	if (!task_on_rq_queued(p))
 		ttwu_activate(rq, p, ENQUEUE_WAKEUP);
@@ -2790,6 +2796,8 @@ static void __sched __schedule(void)
 	struct rq *rq;
 	int cpu;
 
+	kutrace1(KUTRACE_SYSCALL64 + KUTRACE_SCHEDSYSCALL, 0);
+
 	preempt_disable();
 	sched_state_entered_schedule();
 	cpu = smp_processor_id();
@@ -2851,6 +2859,8 @@ static void __sched __schedule(void)
 		rq->nr_switches++;
 		rq->curr = next;
 		++*switch_count;
+		kutrace_pidname(next);
+		kutrace1(KUTRACE_USERPID, next->pid);
 
 		TS_SCHED_END(next);
 		TS_CXS_START(next);
@@ -2874,6 +2884,7 @@ static void __sched __schedule(void)
 	sched_preempt_enable_no_resched();
 
 	TS_SCHED2_END(prev);
+	kutrace1(KUTRACE_SYSRET64 + KUTRACE_SCHEDSYSCALL, 0);
 }
 
 static inline void sched_submit_work(struct task_struct *tsk)

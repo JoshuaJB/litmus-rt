@@ -32,11 +32,15 @@
 #include "entry-header.S"
 #include <asm/entry-macro-multi.S>
 #include <asm/probes.h>
+#include <linux/kutrace.h>
 
 /*
  * Interrupt handling.
  */
 	.macro	irq_handler
+#ifdef CONFIG_KUTRACE
+	// FIXME: Consider implementing irq handling here?
+#endif
 #ifdef CONFIG_MULTI_IRQ_HANDLER
 	ldr	r1, =handle_arch_irq
 	mov	r0, sp
@@ -60,7 +64,14 @@
 	.endm
 
 	.macro	dabt_helper
-
+#ifdef CONFIG_KUTRACE
+	stmdb	sp!, {r0 - r12}
+	mov	r0, #KUTRACE_TRAP
+	add	r0, r0, #KUTRACE_PAGEFAULT
+	mov	r1, #0
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}
+#endif
 	@
 	@ Call the processor-specific abort handler:
 	@
@@ -77,6 +88,14 @@
 	ldr	pc, [ip, #PROCESSOR_DABT_FUNC]
 #else
 	bl	CPU_DABORT_HANDLER
+#endif
+#ifdef CONFIG_KUTRACE
+	stmdb	sp!, {r0 - r12}
+	mov	r0, #KUTRACE_TRAPRET
+	add	r0, r0, #KUTRACE_PAGEFAULT
+	mov	r1, #0
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}
 #endif
 	.endm
 
@@ -482,6 +501,15 @@ __und_usr:
 1:	ldrt	r0, [r4]
  ARM_BE8(rev	r0, r0)				@ little endian instruction
 
+#ifdef CONFIG_KUTRACE
+	stmdb	sp!, {r0 - r12}
+	mov	r1, r0
+	mov	r0, #KUTRACE_TRAP
+	add	r0, r0, #KUTRACE_INVALID_OPCODE
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}
+#endif /* CONFIG_KUTRACE */
+
 	@ r0 = 32-bit ARM instruction which caused the exception
 	@ r2 = PC value for the following instruction (:= regs->ARM_pc)
 	@ r4 = PC value for the faulting instruction
@@ -711,6 +739,14 @@ ENTRY(no_fp)
 ENDPROC(no_fp)
 
 __und_usr_fault_32:
+#ifdef CONFIG_KUTRACE
+	stmdb	sp!, {r0 - r12}
+	mov	r1, #0
+	mov	r0, #KUTRACE_TRAPRET
+	add	r0, r0, #KUTRACE_INVALID_OPCODE
+	bl	asm_kutrace1
+	ldmia	sp!, {r0 - r12}
+#endif /* CONFIG_KUTRACE */
 	mov	r1, #4
 	b	1f
 __und_usr_fault_16:
