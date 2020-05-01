@@ -522,6 +522,22 @@ static long mc2_complete_job(void)
 		set_current_state(TASK_INTERRUPTIBLE);
 		// Enable preemption, but don't call schedule()
 		preempt_enable_no_resched();
+		TRACE_CUR("SLEEP: release=%llu now=%llu\n", get_release(current), litmus_clock());
+		TRACE_CUR("Sleeping for %llu ns, aka until %llu\n", get_release(current) - litmus_clock(), ktime_to_ns(next_release));
+		/* Other components of LITMUS^RT sleep Level-A and Level-B tasks
+		 * for us, however, we have to make sure to correctly setup the
+		 * state. For unclear reasons, that state ends up geting set as
+		 * a side-effect of schedule_hrtimeout. As we don't actually want
+		 * to sleep Level-A and Level-B tasks (otherwise they'll sleep
+		 * twice), just sleep for an infintesimal amount of time to
+		 * trigger the side effects. The side effects are NOT just:
+		 * 1. schedule()
+		 * 2. __set_current_state(TASK_RUNNING)
+		 * 3. set_tsk_need_resched/preempt_set_need_resched/preempt_enable
+		 * 4. litmus_reschedule_local()
+		 */
+		if (get_task_crit_level(current) < CRIT_LEVEL_C)
+			next_release = ns_to_ktime(1); // FIXME: Hack to trigger side-effects
 		err = schedule_hrtimeout(&next_release, HRTIMER_MODE_ABS);
 	} else {
 		/* release the next job immediately */
