@@ -1013,6 +1013,52 @@ done_merging:
 }
 
 /*
+ * Wrapper to __free_one_page which also enforces page coloring
+ *
+ * We can enforce all coloring rules for a zone here since the buddy allocator
+ * is initially populated by the kernel progressively freeing all unreserved
+ * physical memory. This works because the kernel uses the bootmem and memblock
+ * allocators during the early boot process and doesn't immediately need the
+ * buddy allocator.
+ *
+ * This function enforces coloring rules by detecting if the area to be freed
+ * fully belongs to the zone that our caller believes it does. If it fully
+ * belongs to another zone, we redirect the free there. If it spans multiple
+ * zones, we recursively split the free until reaching a size that completely
+ * fits within a single zone.
+ *
+ * WORK IN PROGRESS: Currently discards pages that don't map to the requested zone.
+ */
+#define L2_SPLIT_BIT (6 + 9) // L2 way is 64KiB (2^16), split to 32KiB (2^15)
+#define MAX_COLORED_ORDER L2_SPLIT_BIT - PAGE_SHIFT
+#define PFN_COLORING_MASK (1 << (L2_SPLIT_BIT - PAGE_SHIFT))
+static inline void __filter_color_and_free_one_page(struct page *page,
+		unsigned long pfn,
+		struct zone *zone, unsigned int order,
+		int migratetype)
+{
+	volatile unsigned int color;
+	// FIXME: Support coloring off non-contiguous bits
+	// Detect if we need to split this free among several colors
+	if (order > MAX_COLORED_ORDER) {
+		order--;
+		__filter_color_and_free_one_page(page, pfn, zone, order, migratetype);
+		// Split the order in half recursively
+		pfn += (1 << order);
+		__filter_color_and_free_one_page(pfn_to_page(pfn), pfn, zone, order, migratetype);
+		return;
+	}
+
+	// Now that the area to be freed fully fits in a color, free
+	// We assume coloring bits are contiguous
+	color = (PFN_COLORING_MASK & pfn) >> (ffs(PFN_COLORING_MASK) - 1);
+	if (color == zone->node) {
+		return __free_one_page(page, pfn, zone, order, migratetype);
+	}
+	// TODO: Handle returning pages to a different zone
+}
+
+/*
  * A bad page could be due to a number of fields. Instead of multiple branches,
  * try and check multiple fields with one check. The caller must do a detailed
  * check if necessary.
@@ -1326,7 +1372,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		if (unlikely(isolated_pageblocks))
 			mt = get_pageblock_migratetype(page);
 
-		__free_one_page(page, page_to_pfn(page), zone, 0, mt);
+		__filter_color_and_free_one_page(page, page_to_pfn(page), zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
 	}
 	spin_unlock(&zone->lock);
@@ -1342,7 +1388,7 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
-	__free_one_page(page, pfn, zone, order, migratetype);
+	__filter_color_and_free_one_page(page, pfn, zone, order, migratetype);
 	spin_unlock(&zone->lock);
 }
 

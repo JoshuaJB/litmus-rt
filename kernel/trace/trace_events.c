@@ -2473,6 +2473,11 @@ __find_event_file(struct trace_array *tr, const char *system, const char *event)
 	struct trace_event_call *call;
 	const char *name;
 
+	if (list_empty(&tr->events))
+		return NULL;
+	if (tr->events.next == tr->events.prev)
+		return NULL;
+
 	list_for_each_entry(file, &tr->events, list) {
 
 		call = file->event_call;
