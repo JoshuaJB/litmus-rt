@@ -249,6 +249,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 
 	raw_spin_lock(&_global_env.lock);
 
+	// This serves to adjust `update` and `reschedule` appropriately
 	list_for_each_entry_safe(event, next, &_global_env.next_events, list) {
 		/* If the event time is already passed, we call schedule() on
 		   the lowest priority cpu */
@@ -257,23 +258,37 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 		}
 
 		if (event->next_update < litmus_clock()) {
+			// If the timed expired and went unarmed (?), delete it (?)
+			// Is this provably impossible? => No
+			// Why does this exist?
 			if (event->timer_armed_on == NO_CPU) {
 				struct reservation *res = gmp_find_by_id(&_global_env, event->id);
+				// If a CPU is available for Level-C tasks, mark that it needs to run the scheduler after this
 				int cpu = get_lowest_prio_cpu(res?res->priority:0);
 				//TRACE("GLOBAL EVENT PASSED!! poking CPU %d to reschedule\n", cpu);
 				list_del(&event->list);
 				kfree(event);
-				if (cpu != NO_CPU) {
+				if (cpu != NO_CPU) { // Else no Level-C CPU is available
 					_lowest_prio_cpu.cpu_entries[cpu].will_schedule = true;
 					reschedule[cpu] = 1;
 				}
 			}
+		// If the event expire time is before the next scheduler update and the event
+		// is unarmed or already armed on this CPU, arm it and move the scheduler update forward.
+		// XXX: I don't get the second condition. If it's been armed, update was moved to
+		// next_update. next_update never changes, so this is only useful if somehow update can
+		// get moved past us
+		// Once a timer is armed, it will never be disarmed unless next_update is changed
+		// AKA next_update cannot be changed without setting timer_armed_on = NO_CPU
 		} else if (event->next_update < update && (event->timer_armed_on == NO_CPU || event->timer_armed_on == state->cpu)) {
 			event->timer_armed_on = state->cpu;
 			update = event->next_update;
 			break;
 		}
 	}
+	/* Why might a timer not get armed?
+	 * -> next_update == update
+	 */
 
 	/* Must drop state lock before calling into hrtimer_start(), which
 	 * may raise a softirq, which in turn may wake ksoftirqd. */
@@ -285,7 +300,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 		reschedule[state->cpu] = 0;
 		litmus_reschedule(state->cpu);
 	} else if (likely(local && update != SUP_NO_SCHEDULER_UPDATE)) {
-		/* Reprogram only if not already set correctly. */
+		/* Reprogram our next scheduler update only if it is not already set correctly. */
 		if (!hrtimer_active(&state->timer) ||
 		    ktime_to_ns(hrtimer_get_expires(&state->timer)) != update) {
 			TRACE("canceling timer...at %llu\n",
@@ -499,12 +514,13 @@ static long mc2_complete_job(void)
 	/* update the next release time and deadline */
 	prepare_for_next_period(current);
 	sched_trace_task_release(current);
-	next_release = ns_to_ktime(get_release(current));
+	next_release = ns_to_ktime(get_release(current)); // This is okay: prepare_for_next_period set it up
 	preempt_disable();
 	TRACE_CUR("next_release=%llu\n", get_release(current));
 	if (get_release(current) > litmus_clock()) {
-		/* sleep until next_release */
+		// Sleep in interruptible mode (e.g. interrupts may wake us)
 		set_current_state(TASK_INTERRUPTIBLE);
+		// Enable preemption, but don't call schedule()
 		preempt_enable_no_resched();
 		err = schedule_hrtimeout(&next_release, HRTIMER_MODE_ABS);
 	} else {
@@ -528,6 +544,7 @@ struct task_struct* mc2_dispatch(struct sup_reservation_environment* sup_env, st
 	struct task_struct *tsk = NULL;
 	lt_t time_slice;
 
+	// sup_env->active_reservations is sorted in order of priority (?)
 	list_for_each_entry_safe(res, next, &sup_env->active_reservations, list) {
 		if (res->state == RESERVATION_ACTIVE) {
 			tsk = res->ops->dispatch_client(res, &time_slice);
@@ -951,7 +968,7 @@ static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
 	long err = 0;
 
 	if (cpu == -1) {
-		struct next_timer_event *event, *e_next;
+		struct next_timer_event *event;
 
 		/* if the reservation is global reservation */
 		raw_spin_lock_irqsave(&_global_env.lock, flags);
@@ -962,12 +979,16 @@ static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
 		else
 			err = -EINVAL;
 
-		/* delete corresponding events */
-		list_for_each_entry_safe(event, e_next, &_global_env.next_events, list) {
-			if (event->id == reservation_id) {
-				list_del(&event->list);
-				kfree(event);
-			}
+		/* delete corresponding event(s) (there may be at most two) */
+		event = gmp_find_event_by_id(&_global_env, reservation_id);
+		if (event) {
+			list_del(&event->list);
+			kfree(event);
+		}
+		event = gmp_find_event_by_id(&_global_env, reservation_id);
+		if (event) {
+			list_del(&event->list);
+			kfree(event);
 		}
 
 		raw_spin_unlock_irqrestore(&_global_env.lock, flags);
@@ -1245,9 +1266,6 @@ static long mc2_deactivate_plugin(void)
 		ce->lv = NUM_CRIT_LEVELS;
 		ce->will_schedule = false;
 
-		/* Delete all reservations --- assumes struct reservation
-		 * is prefix of containing struct. */
-
 		while (!list_empty(&state->sup_env.all_reservations)) {
 			res = list_first_entry(
 				&state->sup_env.all_reservations,
@@ -1282,18 +1300,18 @@ static long mc2_deactivate_plugin(void)
 }
 
 static struct sched_plugin mc2_plugin = {
-	.plugin_name			= "MC2",
-	.schedule				= mc2_schedule,
-	.finish_switch			= mc2_finish_switch,
-	.task_wake_up			= mc2_task_resume,
-	.admit_task				= mc2_admit_task,
-	.task_new				= mc2_task_new,
-	.task_exit				= mc2_task_exit,
-	.complete_job           = mc2_complete_job,
-	.get_domain_proc_info   = mc2_get_domain_proc_info,
-	.activate_plugin		= mc2_activate_plugin,
-	.deactivate_plugin      = mc2_deactivate_plugin,
-	.reservation_create     = mc2_reservation_create,
+	.plugin_name		= "MC2",
+	.schedule		= mc2_schedule,
+	.finish_switch		= mc2_finish_switch,
+	.task_wake_up		= mc2_task_resume,
+	.admit_task		= mc2_admit_task,
+	.task_new		= mc2_task_new,
+	.task_exit		= mc2_task_exit,
+	.complete_job		= mc2_complete_job,
+	.get_domain_proc_info	= mc2_get_domain_proc_info,
+	.activate_plugin	= mc2_activate_plugin,
+	.deactivate_plugin	= mc2_deactivate_plugin,
+	.reservation_create	= mc2_reservation_create,
 	.reservation_destroy	= mc2_reservation_destroy,
 };
 
