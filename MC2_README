@@ -71,8 +71,15 @@ changed:
 1. Enable CMDLINE_BOOL "Built-in kernel command line" and set it to
    `nvme.io_queue_depth=512`. The default NVMe submission queue size is 64KiB,
    which cannot be allocated if 32KiB is the largest allocatible order.
-2. Disable NVME_MULTIPATH, otherwise some internal NVMe bookeeping structures
-   will be larger than 32 KiB and thus unallocatable.
+
+Note: When porting this patch to a new platform and the maximum non-colored
+allocation is too small to fit in one color, consider switching kmalloc to
+kvmalloc. Be careful though, since kvmalloc allocates virtually (not
+physically!) contiguous memory, it is not suitable for DMA.
+
+Note 2: There should be no issues at all if you can color at a level blocks of
+size 128KiB available. This is the largest contiguous allocation supported by
+kmalloc.
 
 ### Usage
 See documentation for fake NUMA and cpusets, our only difference is that the

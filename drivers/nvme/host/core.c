@@ -3325,7 +3325,7 @@ static struct nvme_ns_head *nvme_alloc_ns_head(struct nvme_ctrl *ctrl,
 	size += num_possible_nodes() * sizeof(struct nvme_ns *);
 #endif
 
-	head = kzalloc(size, GFP_KERNEL);
+	head = kvzalloc(size, GFP_KERNEL);
 	if (!head)
 		goto out;
 	ret = ida_simple_get(&ctrl->subsys->ns_ida, 1, 0, GFP_KERNEL);
