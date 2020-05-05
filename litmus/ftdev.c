@@ -1,6 +1,7 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/fs.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
@@ -18,7 +19,7 @@ struct ft_buffer* alloc_ft_buffer(unsigned int count, size_t size)
 	size_t total = (size + 1) * count;
 	char* mem;
 
-	buf = kmalloc(sizeof(*buf), GFP_KERNEL);
+	buf = kvmalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return NULL;
 
@@ -34,7 +35,7 @@ struct ft_buffer* alloc_ft_buffer(unsigned int count, size_t size)
 			    mem + (count * size),  /* markers at the end */
 			    mem)) {                /* buffer objects     */
 		vfree(mem);
-		kfree(buf);
+		kvfree(buf);
 		return NULL;
 	}
 	return buf;

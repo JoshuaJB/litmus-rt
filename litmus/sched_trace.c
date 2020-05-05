@@ -99,7 +99,7 @@ static ssize_t log_read(struct file *filp,
 	if (len > MAX_READ_LEN)
 		len = MAX_READ_LEN;
 
-	mem = kmalloc(len, GFP_KERNEL);
+	mem = kvmalloc(len, GFP_KERNEL);
 	if (!mem) {
 		error = -ENOMEM;
 		goto out_unlock;
@@ -118,7 +118,7 @@ static ssize_t log_read(struct file *filp,
 	if (error > 0 && copy_to_user(to, mem, error))
 		error = -EFAULT;
 
-	kfree(mem);
+	kvfree(mem);
  out_unlock:
 	mutex_unlock(&reader_mutex);
  out:
