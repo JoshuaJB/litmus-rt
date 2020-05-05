@@ -5,10 +5,10 @@
  */
 
 #include <linux/percpu.h>
-#include <linux/sched.h>
+#include <linux/sched/task.h>
 #include <linux/list.h>
 #include <linux/slab.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include <litmus/litmus.h>
 #include <litmus/sched_plugin.h>
@@ -49,10 +49,13 @@ asmlinkage long sys_set_mc2_task_param(pid_t pid, struct mc2_task __user * param
 
 	/* Task search and manipulation must be protected */
 	read_lock_irq(&tasklist_lock);
+	rcu_read_lock();
 	if (!(target = find_task_by_vpid(pid))) {
 		retval = -ESRCH;
+		rcu_read_unlock();
 		goto out_unlock;
 	}
+	rcu_read_unlock();
 
 	if (is_realtime(target)) {
 		/* The task is already a real-time task.

@@ -9,7 +9,8 @@
 
 #include <linux/percpu.h>
 #include <linux/slab.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
+#include <linux/module.h>
 
 #include <litmus/sched_plugin.h>
 #include <litmus/preempt.h>
@@ -20,9 +21,9 @@
 #include <litmus/budget.h>
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
-#include <litmus/cache_proc.h>
 #include <litmus/trace.h>
 
+#include <litmus/np.h>
 #include <litmus/mc2_common.h>
 #include <litmus/reservations/reservation.h>
 #include <litmus/reservations/polling.h>
@@ -31,7 +32,12 @@
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 
-extern void do_partition(enum crit_level lv, int cpu);
+static void do_partition(enum crit_level lv, int cpu) {
+	/* Stub: this was implemented in cache_proc.c to switch out the way
+	 * lockdown register on a context switch on the old i.MX6 boards that
+	 * MC^2 used to use. On x86, we use RDT/resctrl subsystem as
+	 * implemented by Intel's CAT and by AMD's Platfrom QoS Extensions. */
+}
 
 /* _global_env - reservation container for level-C tasks*/
 struct gmp_reservation_environment _global_env;
@@ -230,13 +236,12 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 	int local, cpus;
 	lt_t update, now;
 	struct next_timer_event *event, *next;
-	int reschedule[NR_CPUS];
+	int* reschedule;
 	unsigned long flags;
 
 	local_irq_save(flags);
 
-	for (cpus = 0; cpus<NR_CPUS; cpus++)
-		reschedule[cpus] = 0;
+	reschedule = kzalloc(sizeof(int)*num_online_cpus(), GFP_ATOMIC);
 
 	update = state->sup_env.next_scheduler_update;
 	now = state->sup_env.env.current_time;
@@ -307,13 +312,12 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 			      ktime_to_ns(hrtimer_get_expires(&state->timer)));
 			hrtimer_cancel(&state->timer);
 			TRACE("setting scheduler timer for %llu\n", update);
-			/* We cannot use hrtimer_start() here because the
-			 * wakeup flag must be set to zero. */
-			__hrtimer_start_range_ns(&state->timer,
-					ns_to_ktime(update),
-					0 /* timer coalescing slack */,
-					HRTIMER_MODE_ABS_PINNED,
-					0 /* wakeup */);
+			/* We used to have to use __hrtimer_start_range_ns() to avoid
+			 * wakeup, however it seems that the hrtimer system has been
+			 * updated so that we no longer need that flag (or at least that's
+			 * the descision that was made in budget.c and sched_pfair.c). */
+			hrtimer_start(&state->timer, ns_to_ktime(update),
+					HRTIMER_MODE_ABS_PINNED);
 			if (update < litmus_clock()) {
 				/* uh oh, timer expired while trying to set it */
 				TRACE("timer expired during setting "
@@ -346,11 +350,12 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 		}
 	}
 
-	for (cpus = 0; cpus<NR_CPUS; cpus++) {
+	for (cpus = 0; cpus < num_online_cpus(); cpus++) {
 		if (reschedule[cpus]) {
 			litmus_reschedule(cpus);
 		}
 	}
+	kfree(reschedule);
 
 }
 
@@ -390,11 +395,10 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 	struct mc2_cpu_state *state;
 	lt_t update, now;
 	int global_schedule_now;
-	int reschedule[NR_CPUS];
+	int* reschedule;
 	int cpus;
 
-	for (cpus = 0; cpus<NR_CPUS; cpus++)
-		reschedule[cpus] = 0;
+	reschedule = kzalloc(sizeof(int)*num_online_cpus(), GFP_ATOMIC);
 
 	state = container_of(timer, struct mc2_cpu_state, timer);
 
@@ -444,11 +448,12 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 
 	TS_ISR_END;
 
-	for (cpus = 0; cpus<NR_CPUS; cpus++) {
+	for (cpus = 0; cpus < num_online_cpus(); cpus++) {
 		if (reschedule[cpus]) {
 			litmus_reschedule(cpus);
 		}
 	}
+	kfree(reschedule);
 
 	return restart;
 }
@@ -651,9 +656,9 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 
 	pre_schedule(prev, state->cpu);
 
-	if (state->scheduled && state->scheduled != prev)
+	if (prev && state->scheduled && state->scheduled != prev)
 		printk(KERN_ALERT "BUG1!!!!!!!! %s %s\n", state->scheduled ? (state->scheduled)->comm : "null", prev ? (prev)->comm : "null");
-	if (state->scheduled && !is_realtime(prev))
+	if (prev && state->scheduled && !is_realtime(prev))
 		printk(KERN_ALERT "BUG2!!!!!!!! \n");
 
 	/* (0) Determine state */
@@ -679,7 +684,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 
 	if (!state->scheduled) {
 		raw_spin_lock(&_global_env.lock);
-		if (is_realtime(prev))
+		if (prev && is_realtime(prev))
 			gmp_update_time(&_global_env, now);
 		state->scheduled = mc2_global_dispatch(state);
 		_lowest_prio_cpu.cpu_entries[state->cpu].will_schedule = false;
@@ -702,7 +707,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	mc2_update_timer_and_unlock(state);
 
 	raw_spin_lock(&state->lock);
-	if (prev != state->scheduled && is_realtime(prev)) {
+	if (prev && prev != state->scheduled && is_realtime(prev)) {
 		struct mc2_task_state* tinfo = get_mc2_state(prev);
 		struct reservation* res = tinfo->res_info.client.reservation;
 		res->scheduled_on = NO_CPU;
@@ -1048,7 +1053,7 @@ static void mc2_task_exit(struct task_struct *tsk)
 		state->scheduled = NULL;
 
 	/* remove from queues */
-	if (is_running(tsk)) {
+	if (tsk->state == TASK_RUNNING) {
 		/* Assumption: litmus_clock() is synchronized across cores
 		 * [see comment in pres_task_resume()] */
 
@@ -1188,7 +1193,7 @@ static void mc2_setup_domain_proc(void)
 
 	struct cd_mapping *cpu_map, *domain_map;
 
-	memset(&mc2_domain_proc_info, sizeof(mc2_domain_proc_info), 0);
+	memset(&mc2_domain_proc_info, 0, sizeof(mc2_domain_proc_info));
 	init_domain_proc_info(&mc2_domain_proc_info, num_rt_cpus, num_rt_cpus);
 	mc2_domain_proc_info.num_cpus = num_rt_cpus;
 	mc2_domain_proc_info.num_domains = num_rt_cpus;
