@@ -9,8 +9,8 @@
 
 #include <linux/percpu.h>
 #include <linux/slab.h>
-#include <linux/uaccess.h>
 #include <linux/module.h>
+#include <linux/uaccess.h>
 
 #include <litmus/sched_plugin.h>
 #include <litmus/preempt.h>
@@ -26,8 +26,6 @@
 #include <litmus/np.h>
 #include <litmus/mc2_common.h>
 #include <litmus/reservations/reservation.h>
-#include <litmus/reservations/polling.h>
-#include <litmus/reservations/table-driven.h>
 #include <litmus/reservations/alloc.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
@@ -93,17 +91,12 @@ static int level_a_priorities[NR_CPUS];
 #define cpu_state_for(cpu_id)	(&per_cpu(mc2_cpu_state, cpu_id))
 #define local_cpu_state()	(this_cpu_ptr(&mc2_cpu_state))
 
-/* get_mc2_state - get the task's state */
+/* get_mc2_state - get the task's state
+ * Origin: P-RES
+ */
 static struct mc2_task_state* get_mc2_state(struct task_struct *tsk)
 {
-	struct mc2_task_state* tinfo;
-
-	tinfo = (struct mc2_task_state*)tsk_rt(tsk)->plugin_state;
-
-	if (tinfo)
-		return tinfo;
-	else
-		return NULL;
+	return (struct mc2_task_state*)tsk_rt(tsk)->plugin_state;
 }
 
 /* get_task_crit_level - return the criticaility level of a task */
@@ -126,20 +119,20 @@ static enum crit_level get_task_crit_level(struct task_struct *tsk)
  *               If the job has remaining budget, drain it.
  *
  * @job_complete	indicate whether job completes or not
+ * Origin: P-RES
  */
 static void task_departs(struct task_struct *tsk, int job_complete)
 {
-	struct mc2_task_state* tinfo = get_mc2_state(tsk);
-
-	struct reservation* res = NULL;
-	struct reservation_client *client = NULL;
+	struct mc2_task_state* state = get_mc2_state(tsk);
+	struct reservation* res;
+	struct reservation_client *client;
 
 	BUG_ON(!is_realtime(tsk));
 
-	res    = tinfo->res_info.client.reservation;
-	client = &tinfo->res_info.client;
-	BUG_ON(!res);
+	client = &state->res_info.client;
 	BUG_ON(!client);
+	res    = client->reservation;
+	BUG_ON(!res);
 
 	/* empty remaining budget */
 	if (job_complete) {
@@ -148,31 +141,33 @@ static void task_departs(struct task_struct *tsk, int job_complete)
 	}
 
 	res->ops->client_departs(res, client, job_complete);
-	tinfo->has_departed = true;
-	TRACE_TASK(tsk, "Client departs with budget %llu at %llu\n", res->cur_budget, litmus_clock());
+	state->has_departed = true;
+	TRACE_TASK(tsk, "client_departs: removed from reservation R%d with budget %llu\n", res->id, res->cur_budget);
 }
 
 /* task_arrive - put a task into its reservation
+ * Origin: P-RES
  */
-static void task_arrives(struct mc2_cpu_state *state, struct task_struct *tsk)
+static void task_arrives(struct task_struct *tsk)
 {
-	struct mc2_task_state* tinfo = get_mc2_state(tsk);
+	struct mc2_task_state* state = get_mc2_state(tsk);
 	struct reservation* res;
 	struct reservation_client *client;
 
-	res    = tinfo->res_info.client.reservation;
-	client = &tinfo->res_info.client;
+	client = &state->res_info.client;
+	res    = client->reservation;
 
-	tinfo->has_departed = false;
+	state->has_departed = false;
 
 	res->ops->client_arrives(res, client);
-	TRACE_TASK(tsk, "Client arrives at %llu\n", litmus_clock());
+	TRACE_TASK(tsk, "client_arrives: added to reservation R%d\n", res->id);
 }
 
 /* get_lowest_prio_cpu - return the lowest priority cpu
  *                       This will be used for scheduling level-C tasks.
- *                       If all CPUs are running tasks which has
+ *                       If all CPUs are running tasks which have
  *                       higher priority than level C, return NO_CPU.
+ * Origin: Namhoon
  */
 static int get_lowest_prio_cpu(lt_t priority)
 {
@@ -230,6 +225,7 @@ static int get_lowest_prio_cpu(lt_t priority)
  *                               If there exist a global event which is
  *                               not armed on any CPU and g_timer is not
  *                               active, set a g_timer for that event.
+ * Origin: P-RES
  */
 static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 {
@@ -316,7 +312,8 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 			 * wakeup, however it seems that the hrtimer system has been
 			 * updated so that we no longer need that flag (or at least that's
 			 * the descision that was made in budget.c and sched_pfair.c). */
-			hrtimer_start(&state->timer, ns_to_ktime(update),
+			hrtimer_start(&state->timer,
+					ns_to_ktime(update),
 					HRTIMER_MODE_ABS_PINNED);
 			if (update < litmus_clock()) {
 				/* uh oh, timer expired while trying to set it */
@@ -334,7 +331,9 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 		 */
 		TRACE("mc2_update_timer for remote CPU %d (update=%llu, "
 		      "active:%d, set:%llu)\n",
-			state->cpu, update, hrtimer_active(&state->timer),
+			state->cpu,
+			update,
+			hrtimer_active(&state->timer),
 			ktime_to_ns(hrtimer_get_expires(&state->timer)));
 		if (!hrtimer_active(&state->timer) ||
 		    ktime_to_ns(hrtimer_get_expires(&state->timer)) > update) {
@@ -362,6 +361,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 /* update_cpu_prio - Update cpu's priority
  *                   When a cpu picks a new task, call this function
  *                   to update cpu priorities.
+ * Origin: Namhoon
  */
 static void update_cpu_prio(struct mc2_cpu_state *state)
 {
@@ -387,6 +387,7 @@ static void update_cpu_prio(struct mc2_cpu_state *state)
 };
 
 /* on_scheduling_timer - timer event for partitioned tasks
+ * Origin: P-RES
  */
 static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 {
@@ -412,13 +413,14 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 
 	TS_ISR_START;
 
-	TRACE("Timer fired at %llu\n", litmus_clock());
 	raw_spin_lock_irqsave(&state->lock, flags);
-	now = litmus_clock();
-	sup_update_time(&state->sup_env, now);
+	sup_update_time(&state->sup_env, litmus_clock());
 
 	update = state->sup_env.next_scheduler_update;
 	now = state->sup_env.env.current_time;
+
+	TRACE_CUR("on_scheduling_timer at %llu, upd:%llu (for cpu=%d)\n",
+		now, update, state->cpu);
 
 	if (update <= now) {
 		litmus_reschedule_local();
@@ -644,6 +646,7 @@ static inline void post_schedule(struct task_struct *next, int cpu)
 }
 
 /* mc2_schedule - main scheduler function. pick the next task to run
+ * Origin: P-RES and Namhoon
  */
 static struct task_struct* mc2_schedule(struct task_struct * prev)
 {
@@ -743,9 +746,10 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	post_schedule(state->scheduled, state->cpu);
 
 	raw_spin_unlock(&state->lock);
-	if (state->scheduled) {
+	if (prev && prev != state->scheduled && is_realtime(prev))
+		TRACE_TASK(prev, "descheduled.\n");
+	if (state->scheduled)
 		TRACE_TASK(state->scheduled, "scheduled.\n");
-	}
 
 	return state->scheduled;
 }
@@ -795,11 +799,11 @@ static void mc2_task_resume(struct task_struct  *tsk)
 		 * at the moment. */
 		if (tinfo->cpu != -1) {
 			sup_update_time(&state->sup_env, litmus_clock());
-			task_arrives(state, tsk);
+			task_arrives(tsk);
 		} else {
 			raw_spin_lock(&_global_env.lock);
 			gmp_update_time(&_global_env, litmus_clock());
-			task_arrives(state, tsk);
+			task_arrives(tsk);
 			raw_spin_unlock(&_global_env.lock);
 		}
 
@@ -820,7 +824,7 @@ static void mc2_task_resume(struct task_struct  *tsk)
  */
 static long mc2_admit_task(struct task_struct *tsk)
 {
-	long err = 0;
+	long err = -EINVAL;
 	unsigned long flags;
 	struct reservation *res;
 	struct mc2_cpu_state *state;
@@ -923,16 +927,14 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 	else
 		state = cpu_state_for(tinfo->cpu);
 
+	/* acquire the lock protecting the state and disable interrupts */
+	raw_spin_lock_irqsave(&state->lock, flags);
 
 	if (is_running) {
 		state->scheduled = tsk;
 		/* make sure this task should actually be running */
 		litmus_reschedule_local();
 	}
-
-	/* acquire the lock protecting the state and disable interrupts */
-	local_irq_save(flags);
-	raw_spin_lock(&state->lock);
 
 	if (lv == CRIT_LEVEL_C) {
 		raw_spin_lock(&_global_env.lock);
@@ -945,13 +947,12 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 	if (on_runqueue || is_running) {
 		/* Assumption: litmus_clock() is synchronized across cores
 		 * [see comment in pres_task_resume()] */
-		if (lv == CRIT_LEVEL_C) {
+		if (lv == CRIT_LEVEL_C)
 			gmp_update_time(&_global_env, litmus_clock());
-		}
 		else
 			sup_update_time(&state->sup_env, litmus_clock());
 
-		task_arrives(state, tsk);
+		task_arrives(tsk);
 		if (lv == CRIT_LEVEL_C)
 			raw_spin_unlock(&_global_env.lock);
 		/* NOTE: drops state->lock */
@@ -1041,13 +1042,14 @@ static void mc2_task_exit(struct task_struct *tsk)
 	enum crit_level lv = tinfo->mc2_param.crit;
 	int cpu;
 
-	local_irq_save(flags);
 	if (tinfo->cpu != -1)
 		state = cpu_state_for(tinfo->cpu);
 	else
 		state = local_cpu_state();
+	raw_spin_lock_irqsave(&state->lock, flags);
 
-	raw_spin_lock(&state->lock);
+	TRACE_TASK(tsk, "task exits at %llu (present:%d sched:%d)\n",
+		litmus_clock(), is_present(tsk), state->scheduled == tsk);
 
 	if (state->scheduled == tsk)
 		state->scheduled = NULL;
@@ -1100,6 +1102,7 @@ static void mc2_task_exit(struct task_struct *tsk)
 }
 
 /* mc2_reservation_create - reservation_create system call backend
+ * Origin: P-RES
  */
 static long mc2_reservation_create(int res_type, void* __user _config)
 {
@@ -1141,7 +1144,7 @@ static long mc2_reservation_create(int res_type, void* __user _config)
 		default:
 			err = -EINVAL;
 			break;
-	};
+	}
 
 	if (err)
 		return err;
@@ -1248,6 +1251,7 @@ static long mc2_activate_plugin(void)
 	return 0;
 }
 
+/* Origin: Namhoon */
 static void mc2_finish_switch(struct task_struct *prev)
 {
 	int cpus;
