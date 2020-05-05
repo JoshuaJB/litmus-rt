@@ -150,6 +150,10 @@ struct reservation {
 	struct reservation_ops *ops;
 
 	struct list_head clients;
+
+	/* for global env. */
+	int scheduled_on;
+	int event_added;
 };
 
 void reservation_init(struct reservation *res);
@@ -215,10 +219,67 @@ struct sup_reservation_environment {
 void sup_init(struct sup_reservation_environment* sup_env);
 void sup_add_new_reservation(struct sup_reservation_environment* sup_env,
 	struct reservation* new_res);
+// We expose this as we need it in the MC^2 scheduler
+void sup_scheduler_update_after(struct sup_reservation_environment* sup_env,
+	lt_t timeout);
 void sup_update_time(struct sup_reservation_environment* sup_env, lt_t now);
 struct task_struct* sup_dispatch(struct sup_reservation_environment* sup_env);
 
 struct reservation* sup_find_by_id(struct sup_reservation_environment* sup_env,
+	unsigned int id);
+void destroy_reservation(struct reservation* res);
+
+/* A global multiprocessor (GMP) reservation environment. */
+
+typedef enum {
+	EVENT_REPLENISH = 0,
+	EVENT_DRAIN,
+} event_type_t;
+
+
+struct next_timer_event {
+	lt_t next_update;
+	int timer_armed_on;
+	unsigned int id;
+	event_type_t type;
+	struct list_head list;
+};
+
+struct gmp_reservation_environment {
+	raw_spinlock_t lock;
+	struct reservation_environment env;
+
+	/* ordered by priority */
+	struct list_head active_reservations;
+
+	/* ordered by next_replenishment */
+	struct list_head depleted_reservations;
+
+	/* unordered */
+	struct list_head inactive_reservations;
+
+	/* list of all reservations */
+	struct list_head all_reservations;
+
+	/* timer event ordered by next_update */
+	struct list_head next_events;
+
+	/* (schedule_now == true) means call gmp_dispatch() now */
+	int schedule_now;
+	/* set to true if a call to gmp_dispatch() is imminent */
+	bool will_schedule;
+};
+
+void gmp_init(struct gmp_reservation_environment* gmp_env);
+void gmp_add_new_reservation(struct gmp_reservation_environment* gmp_env,
+	struct reservation* new_res);
+void gmp_add_event_after(struct gmp_reservation_environment* gmp_env,
+	lt_t timeout, unsigned int id, event_type_t type);
+void gmp_print_events(struct gmp_reservation_environment* gmp_env, lt_t now);
+int gmp_update_time(struct gmp_reservation_environment* gmp_env, lt_t now);
+struct task_struct* gmp_dispatch(struct gmp_reservation_environment* gmp_env);
+struct next_timer_event* gmp_find_event_by_id(struct gmp_reservation_environment* gmp_env, unsigned int id);
+struct reservation* gmp_find_by_id(struct gmp_reservation_environment* gmp_env,
 	unsigned int id);
 
 #endif

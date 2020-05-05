@@ -164,6 +164,7 @@ struct rt_job {
 };
 
 struct pfair_param;
+struct mc2_task;
 
 /*	RT task parameters for scheduling extensions
  *	These parameters are inherited during clone and therefore must
@@ -283,6 +284,9 @@ struct rt_param {
 
 	/* Pointer to the page shared between userspace and kernel. */
 	struct control_page * ctrl_page;
+
+	/* Mixed-criticality specific data */
+	struct mc2_task* mc2_data;
 };
 
 #endif
