@@ -176,8 +176,8 @@ static struct task_struct* pres_schedule(struct task_struct * prev)
 
 	raw_spin_lock(&state->lock);
 
-	BUG_ON(state->scheduled && state->scheduled != prev);
-	BUG_ON(state->scheduled && !is_realtime(prev));
+	BUG_ON(prev && state->scheduled && state->scheduled != prev);
+	BUG_ON(prev && state->scheduled && !is_realtime(prev));
 
 	/* update time */
 	state->sup_env.will_schedule = true;
@@ -194,7 +194,7 @@ static struct task_struct* pres_schedule(struct task_struct * prev)
 	/* NOTE: drops state->lock */
 	pres_update_timer_and_unlock(state);
 
-	if (prev != state->scheduled && is_realtime(prev))
+	if (prev && prev != state->scheduled && is_realtime(prev))
 		TRACE_TASK(prev, "descheduled.\n");
 	if (state->scheduled)
 		TRACE_TASK(state->scheduled, "scheduled.\n");
