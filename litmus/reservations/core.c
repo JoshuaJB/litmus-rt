@@ -651,7 +651,7 @@ static void gmp_replenish_budgets(struct gmp_reservation_environment* gmp_env)
 #define EPSILON	50
 
 /* return schedule_now */
-int gmp_update_time(
+unsigned int gmp_update_time(
 	struct gmp_reservation_environment* gmp_env,
 	lt_t now)
 {
@@ -691,7 +691,11 @@ int gmp_update_time(
 
 	//gmp_print_events(gmp_env, litmus_clock());
 
-	ret = min(gmp_env->schedule_now, NR_CPUS);
+	/* schedule_now is a counter of how many times we need to pull the lowest
+	 * priority CPU and consider rescheduling. We cap it by num_online_cpus()
+	 * here because we can only pull for the lowest priority CPU at most
+	 * num_online_cpus() times. */
+	ret = min(gmp_env->schedule_now, num_online_cpus());
 	gmp_env->schedule_now = 0;
 
 	return ret;

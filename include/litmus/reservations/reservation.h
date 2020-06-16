@@ -265,7 +265,7 @@ struct gmp_reservation_environment {
 	struct list_head next_events;
 
 	/* (schedule_now == true) means call gmp_dispatch() now */
-	int schedule_now;
+	unsigned int schedule_now;
 	/* set to true if a call to gmp_dispatch() is imminent */
 	bool will_schedule;
 };
@@ -276,7 +276,7 @@ void gmp_add_new_reservation(struct gmp_reservation_environment* gmp_env,
 void gmp_add_event_after(struct gmp_reservation_environment* gmp_env,
 	lt_t timeout, unsigned int id, event_type_t type);
 void gmp_print_events(struct gmp_reservation_environment* gmp_env, lt_t now);
-int gmp_update_time(struct gmp_reservation_environment* gmp_env, lt_t now);
+unsigned int gmp_update_time(struct gmp_reservation_environment* gmp_env, lt_t now);
 struct task_struct* gmp_dispatch(struct gmp_reservation_environment* gmp_env);
 struct next_timer_event* gmp_find_event_by_id(struct gmp_reservation_environment* gmp_env, unsigned int id);
 struct reservation* gmp_find_by_id(struct gmp_reservation_environment* gmp_env,

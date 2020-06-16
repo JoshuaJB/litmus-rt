@@ -266,7 +266,7 @@ static void mc2_update_timer_and_unlock(struct mc2_cpu_state *state)
 				struct reservation *res = gmp_find_by_id(&_global_env, event->id);
 				// If a CPU is available for Level-C tasks, mark that it needs to run the scheduler after this
 				int cpu = get_lowest_prio_cpu(res?res->priority:0);
-				//TRACE("GLOBAL EVENT PASSED!! poking CPU %d to reschedule\n", cpu);
+				TRACE("GLOBAL EVENT PASSED!! poking CPU %d to reschedule\n", cpu);
 				list_del(&event->list);
 				kfree(event);
 				if (cpu != NO_CPU) { // Else no Level-C CPU is available
@@ -396,10 +396,6 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 	struct mc2_cpu_state *state;
 	lt_t update, now;
 	int global_schedule_now;
-	int* reschedule;
-	int cpus;
-
-	reschedule = kzalloc(sizeof(int)*num_online_cpus(), GFP_ATOMIC);
 
 	state = container_of(timer, struct mc2_cpu_state, timer);
 
@@ -432,8 +428,6 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 	raw_spin_lock(&_global_env.lock);
 	global_schedule_now = gmp_update_time(&_global_env, now);
 
-	BUG_ON(global_schedule_now < 0 || global_schedule_now > 4);
-
 	/* Find the lowest cpu, and call reschedule */
 	while (global_schedule_now--) {
 		int cpu = get_lowest_prio_cpu(0);
@@ -442,20 +436,15 @@ static enum hrtimer_restart on_scheduling_timer(struct hrtimer *timer)
 			if (cpu == state->cpu && update > now)
 				; //litmus_reschedule_local();
 			else
-				reschedule[cpu] = 1;
+				/* This is safe as we'll either just set a flag or send an IPI,
+				   it should never cause an immediate preemption */
+				litmus_reschedule(cpu);
 		}
 	}
 	raw_spin_unlock(&_global_env.lock);
 	raw_spin_unlock_irqrestore(&state->lock, flags);
 
 	TS_ISR_END;
-
-	for (cpus = 0; cpus < num_online_cpus(); cpus++) {
-		if (reschedule[cpus]) {
-			litmus_reschedule(cpus);
-		}
-	}
-	kfree(reschedule);
 
 	return restart;
 }
@@ -720,7 +709,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 			int cpu;
 			raw_spin_lock(&_global_env.lock);
 			cpu = get_lowest_prio_cpu(res?res->priority:LITMUS_NO_PRIORITY);
-			//TRACE("LEVEL-C TASK PREEMPTED!! poking CPU %d to reschedule\n", cpu);
+			TRACE("LEVEL-C TASK PREEMPTED!! poking CPU %d to reschedule\n", cpu);
 			if (cpu != NO_CPU && _lowest_prio_cpu.cpu_entries[cpu].will_schedule == false) {
 				_lowest_prio_cpu.cpu_entries[cpu].will_schedule = true;
 				resched_cpu[cpu] = 1;
@@ -972,11 +961,11 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 	release = res->next_replenishment;
 
 	if (!release) {
-		TRACE_TASK(tsk, "mc2_task_new() next_release = %llu\n", release);
+		TRACE_TASK(tsk, "mc2_task_new() next_release = NULL\n");
 		BUG();
 	}
-	else
-		TRACE_TASK(tsk, "mc2_task_new() next_release = NULL\n");
+
+	TRACE_TASK(tsk, "mc2_task_new() next_release = %llu\n", release);
 	release_at(tsk, release);
 }
 
@@ -1260,7 +1249,7 @@ static void mc2_finish_switch(struct task_struct *prev)
 
 	state->scheduled = is_realtime(current) ? current : NULL;
 	if (lv == CRIT_LEVEL_C) {
-		for (cpus = 0; cpus<NR_CPUS; cpus++) {
+		for (cpus = 0; cpus < num_online_cpus(); cpus++) {
 			if (resched_cpu[cpus] && state->cpu != cpus) {
 				resched_cpu[cpus] = 0;
 				litmus_reschedule(cpus);
