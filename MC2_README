@@ -58,6 +58,19 @@ This chokepoint provides a perfect spot to reroute free requests for each page
 to the emulated NUMA memory node that matches its color. This one simple change
 implements page coloring in both a resilient and efficient manner!
 
+### Quick Setup (Only tested on Ubuntu 20.04 Server)
+To install:
+1. Run `sudo ./SETUP_MC2.sh` to setup the environment
+2. Run `make bzImage modules -j32` to build everything
+3. Run `sudo make INSTALL_MOD_STRIP=1 modules_install install` to install everything
+
+To boot with grub-reboot rather than via the interactive menu:
+1. Change `GRUB_DEFAULT` to equal `saved` in `/etc/default/grub`
+2. Run `sudo update-grub` to apply the changes
+3. Run `sudo grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 5.4.0-rc7-mc2-v2+"`
+   to set the default kernel that it will use at next boot.
+4. Save all your work and run `sudo reboot`
+
 ### Setup
 1. Verify that the constants used in `__filter_color_and_free_one_page()` in
 `page_alloc.c` match your platform.
@@ -84,3 +97,7 @@ allocation supported by kmalloc.
 ### Usage
 See documentation for fake NUMA and cpusets, our only difference is that the
 fake NUMA memory nodes correspond to set of all pages of one color.
+
+### Removal
+1. Run `sudo rm /boot/*-mc2-v2+` and `sudo update-grub` to uninstall the kernel
+2. Run `sudo rm -rf /usr/lib/modules/*-mc2-v2+` to uninstall the modules
