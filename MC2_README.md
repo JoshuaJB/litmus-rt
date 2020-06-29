@@ -74,8 +74,9 @@ To boot with grub-reboot rather than via the interactive menu:
 ### Setup
 1. Verify that the constants used in `__filter_color_and_free_one_page()` in
 `page_alloc.c` match your platform.
-2. Enable `CONFIG_NUMA_EMU` and add `numa=fake=2` to your kernel's cmdline, where
-`2` is the number of colors in your system.
+2. Enable `CONFIG_NUMA_EMU` and add `numa=fake=2U` to your kernel's cmdline, where
+`2` is the number of colors in your system. (Also add `irqaffinity=0` if you'd
+like to use core 0 as the interrupt master.)
 3. Boot linux and enjoy colored pages!
 
 For the test systems used at UNC, several drivers dislike the lack of
@@ -97,6 +98,9 @@ allocation supported by kmalloc.
 ### Usage
 See documentation for fake NUMA and cpusets, our only difference is that the
 fake NUMA memory nodes correspond to set of all pages of one color.
+
+Specifically, use `numactl -m <color>` before your task to specify which memory
+color its pages should be allocated in.
 
 ### Removal
 1. Run `sudo rm /boot/*-mc2-v2+` and `sudo update-grub` to uninstall the kernel
