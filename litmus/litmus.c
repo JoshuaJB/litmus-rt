@@ -520,7 +520,6 @@ int switch_sched_plugin(struct sched_plugin* plugin)
 	struct domain_proc_info* domain_info;
 
 	BUG_ON(!plugin);
-
 	if (atomic_read(&rt_task_count) == 0) {
 		down_write(&plugin_switch_mutex);
 

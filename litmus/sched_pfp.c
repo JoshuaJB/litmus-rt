@@ -152,8 +152,8 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 	 * differently from gedf, when a task exits (dead)
 	 * pfp->schedule may be null and prev _is_ realtime
 	 */
-	BUG_ON(pfp->scheduled && pfp->scheduled != prev);
-	BUG_ON(pfp->scheduled && !is_realtime(prev));
+	BUG_ON(prev && pfp->scheduled && pfp->scheduled != prev);
+	BUG_ON(prev && pfp->scheduled && !is_realtime(prev));
 
 	/* (0) Determine state */
 	exists      = pfp->scheduled != NULL;
@@ -164,7 +164,6 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 	sleep	    = exists && is_completed(pfp->scheduled);
 	migrate     = exists && get_partition(pfp->scheduled) != pfp->cpu;
 	preempt     = !blocks && (migrate || fp_preemption_needed(&pfp->ready_queue, prev));
-
 	/* If we need to preempt do so.
 	 * The following checks set resched to 1 in case of special
 	 * circumstances.
@@ -212,7 +211,7 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 		if (pfp->scheduled && !blocks  && !migrate)
 			requeue(pfp->scheduled, pfp);
 		next = fp_prio_take(&pfp->ready_queue);
-		if (next == prev) {
+		if (prev && next == prev) {
 			struct task_struct *t = fp_prio_peek(&pfp->ready_queue);
 			TRACE_TASK(next, "next==prev sleep=%d oot=%d np=%d preempt=%d migrate=%d "
 				   "boost=%d empty=%d prio-idx=%u prio=%u\n",
@@ -1990,7 +1989,6 @@ static long pfp_activate_plugin(void)
 
 #ifdef CONFIG_LITMUS_LOCKING
 	get_srp_prio = pfp_get_srp_prio;
-
 	for_each_online_cpu(cpu) {
 		init_waitqueue_head(&per_cpu(mpcpvs_vspin_wait, cpu));
 		per_cpu(mpcpvs_vspin, cpu) = NULL;
@@ -2001,9 +1999,7 @@ static long pfp_activate_plugin(void)
 	}
 
 #endif
-
 	pfp_setup_domain_proc();
-
 	return 0;
 }
 

@@ -286,7 +286,7 @@ static long pres_admit_task(struct task_struct *tsk)
 	}
 
 	TRACE_TASK(tsk, "on CPU %d, valid?:%d\n",
-		task_cpu(tsk), cpumask_test_cpu(task_cpu(tsk), &tsk->cpus_allowed));
+		task_cpu(tsk), cpumask_test_cpu(task_cpu(tsk), tsk->cpus_ptr));
 
 	raw_spin_lock_irqsave(&state->lock, flags);
 
