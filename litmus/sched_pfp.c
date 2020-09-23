@@ -227,10 +227,10 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 					   get_priority(t));
 		}
 		/* If preempt is set, we should not see the same task again. */
-		BUG_ON(preempt && next == prev);
+		BUG_ON(prev && preempt && next == prev);
 		/* Similarly, if preempt is set, then next may not be NULL,
 		 * unless it's a migration. */
-		BUG_ON(preempt && !migrate && next == NULL);
+		BUG_ON(prev && preempt && !migrate && next == NULL);
 	} else
 		/* Only override Linux scheduler if we have a real-time task
 		 * scheduled that needs to continue.

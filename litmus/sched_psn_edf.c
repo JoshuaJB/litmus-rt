@@ -193,7 +193,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 			     && budget_exhausted(pedf->scheduled);
 	np 	    = exists && is_np(pedf->scheduled);
 	sleep	    = exists && is_completed(pedf->scheduled);
-	preempt     = !prev || edf_preemption_needed(edf, prev);
+	preempt     = edf_preemption_needed(edf, prev);
 
 	/* If we need to preempt do so.
 	 * The following checks set resched to 1 in case of special
