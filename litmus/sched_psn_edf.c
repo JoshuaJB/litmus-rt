@@ -183,8 +183,8 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	 * differently from gedf, when a task exits (dead)
 	 * pedf->schedule may be null and prev _is_ realtime
 	 */
-	BUG_ON(prev && pedf->scheduled && pedf->scheduled != prev);
-	BUG_ON(prev && pedf->scheduled && !is_realtime(prev));
+	BUG_ON(pedf->scheduled && pedf->scheduled != prev);
+	BUG_ON(pedf->scheduled && !is_realtime(prev));
 
 	/* (0) Determine state */
 	exists      = pedf->scheduled != NULL;

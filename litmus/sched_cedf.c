@@ -29,7 +29,6 @@
 #include <linux/percpu.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/sched/signal.h>
 
 #include <linux/module.h>
 
