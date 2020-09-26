@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/sched/topology.h>
 #include <linux/wait.h>
+#include <linux/sched/signal.h>
 
 #include <litmus/debug_trace.h>
 #include <litmus/litmus.h>
@@ -418,7 +419,6 @@ static struct task_struct* gsnedf_schedule(struct task_struct * prev)
 		return NULL;
 	}
 #endif
-
 	raw_spin_lock(&gsnedf_lock);
 
 	/* sanity checking */
