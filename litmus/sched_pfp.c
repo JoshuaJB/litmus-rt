@@ -164,6 +164,7 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 	sleep	    = exists && is_completed(pfp->scheduled);
 	migrate     = exists && get_partition(pfp->scheduled) != pfp->cpu;
 	preempt     = !blocks && (migrate || fp_preemption_needed(&pfp->ready_queue, prev));
+
 	/* If we need to preempt do so.
 	 * The following checks set resched to 1 in case of special
 	 * circumstances.
@@ -1989,6 +1990,7 @@ static long pfp_activate_plugin(void)
 
 #ifdef CONFIG_LITMUS_LOCKING
 	get_srp_prio = pfp_get_srp_prio;
+
 	for_each_online_cpu(cpu) {
 		init_waitqueue_head(&per_cpu(mpcpvs_vspin_wait, cpu));
 		per_cpu(mpcpvs_vspin, cpu) = NULL;
@@ -1999,7 +2001,9 @@ static long pfp_activate_plugin(void)
 	}
 
 #endif
+
 	pfp_setup_domain_proc();
+
 	return 0;
 }
 

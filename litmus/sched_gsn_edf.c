@@ -419,6 +419,7 @@ static struct task_struct* gsnedf_schedule(struct task_struct * prev)
 		return NULL;
 	}
 #endif
+
 	raw_spin_lock(&gsnedf_lock);
 
 	/* sanity checking */
