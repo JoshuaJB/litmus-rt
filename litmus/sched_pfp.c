@@ -152,8 +152,8 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 	 * differently from gedf, when a task exits (dead)
 	 * pfp->schedule may be null and prev _is_ realtime
 	 */
-	BUG_ON(pfp->scheduled && pfp->scheduled != prev);
-	BUG_ON(pfp->scheduled && !is_realtime(prev));
+	BUG_ON(prev && pfp->scheduled && pfp->scheduled != prev);
+	BUG_ON(prev && pfp->scheduled && !is_realtime(prev));
 
 	/* (0) Determine state */
 	exists      = pfp->scheduled != NULL;
@@ -212,7 +212,7 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 		if (pfp->scheduled && !blocks  && !migrate)
 			requeue(pfp->scheduled, pfp);
 		next = fp_prio_take(&pfp->ready_queue);
-		if (next == prev) {
+		if (prev && next == prev) {
 			struct task_struct *t = fp_prio_peek(&pfp->ready_queue);
 			TRACE_TASK(next, "next==prev sleep=%d oot=%d np=%d preempt=%d migrate=%d "
 				   "boost=%d empty=%d prio-idx=%u prio=%u\n",
@@ -228,10 +228,10 @@ static struct task_struct* pfp_schedule(struct task_struct * prev)
 					   get_priority(t));
 		}
 		/* If preempt is set, we should not see the same task again. */
-		BUG_ON(preempt && next == prev);
+		BUG_ON(prev && preempt && next == prev);
 		/* Similarly, if preempt is set, then next may not be NULL,
 		 * unless it's a migration. */
-		BUG_ON(preempt && !migrate && next == NULL);
+		BUG_ON(prev && preempt && !migrate && next == NULL);
 	} else
 		/* Only override Linux scheduler if we have a real-time task
 		 * scheduled that needs to continue.

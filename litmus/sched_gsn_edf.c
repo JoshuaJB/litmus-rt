@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/sched/topology.h>
 #include <linux/wait.h>
+#include <linux/sched/signal.h>
 
 #include <litmus/debug_trace.h>
 #include <litmus/litmus.h>
