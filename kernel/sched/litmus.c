@@ -66,7 +66,7 @@ litmus_schedule(struct rq *rq, struct task_struct *prev)
 		/* while we drop the lock, the prev task could change its
 		 * state
 		 */
-		BUG_ON(prev != current);
+		BUG_ON(prev && prev != current);
 		was_running = is_current_running();
 
 		/* Don't race with a concurrent switch.  This could deadlock in
@@ -276,27 +276,14 @@ static struct task_struct *pick_next_task_litmus(struct rq *rq,
 	if (rf) {
 		cookie = rf->cookie;
 	}
-	if (prev && is_realtime(prev))
-		update_time_litmus(rq, prev);
+	if (rq->curr && is_realtime(rq->curr))
+		update_time_litmus(rq, rq->curr);
 
 	lockdep_unpin_lock(&rq->lock, cookie);
 	TS_PLUGIN_SCHED_START;
-	next = litmus_schedule(rq, prev);
+	next = litmus_schedule(rq, rq->curr);
 	TS_PLUGIN_SCHED_END;
 	lockdep_repin_lock(&rq->lock, cookie);
-
-	/* This is a bit backwards: the other classes call put_prev_task()
-	 * _after_ they've determined that the class has some queued tasks.
-	 * We can't determine this easily because each plugin manages its own
-	 * ready queues, and because in the case of globally shared queues,
-	 * we really don't know whether we'll have something ready even if
-	 * we test here. So we do it in reverse: first ask the plugin to
-	 * provide a task, and if we find one, call put_prev_task() on the
-	 * previously scheduled task.
-	 */
-	if (next && prev)
-		put_prev_task(rq, prev);
-
 	return next;
 }
 
@@ -338,6 +325,13 @@ static void set_next_task_litmus(struct rq *rq, struct task_struct *p)
 
 
 #ifdef CONFIG_SMP
+/* Basic no-op balance function
+ */
+static int 
+balance_litmus(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
+{
+	return 1;
+}
 /* execve tries to rebalance task in this scheduling domain.
  * We don't care about the scheduling domain; can gets called from
  * exec, fork, wakeup.
@@ -379,6 +373,7 @@ const struct sched_class litmus_sched_class = {
 	.put_prev_task		= put_prev_task_litmus,
 
 #ifdef CONFIG_SMP
+	.balance 		= balance_litmus,
 	.select_task_rq		= select_task_rq_litmus,
 #endif
 
