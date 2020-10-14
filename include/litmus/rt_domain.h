@@ -6,6 +6,8 @@
 #define __UNC_RT_DOMAIN_H__
 
 #include <litmus/bheap.h>
+#include <litmus/binheap.h>
+#include <litmus/reservations/ext_reservation.h>
 
 #define RELEASE_QUEUE_SLOTS 127 /* prime */
 
@@ -15,9 +17,9 @@ typedef int (*check_resched_needed_t)(struct _rt_domain *rt);
 typedef void (*release_jobs_t)(struct _rt_domain *rt, struct bheap* tasks);
 
 struct release_queue {
-	/* each slot maintains a list of release heaps sorted
-	 * by release time */
-	struct list_head		slot[RELEASE_QUEUE_SLOTS];
+	struct list_head slot[RELEASE_QUEUE_SLOTS];
+	struct binheap queue;
+	volatile lt_t earliest_release;
 };
 
 typedef struct _rt_domain {
@@ -31,7 +33,12 @@ typedef struct _rt_domain {
 
 #ifdef CONFIG_RELEASE_MASTER
 	int				release_master;
+	/* used to delegate releases */
+	struct hrtimer_start_on_info	info;
 #endif
+
+	/* release timer for earliest heap in release_queue */
+	struct hrtimer			timer;
 
 	/* for moving tasks to the release queue */
 	raw_spinlock_t			tobe_lock;
@@ -48,28 +55,34 @@ typedef struct _rt_domain {
 } rt_domain_t;
 
 struct release_heap {
+	/* for enqueueing into release_queue */
+	struct binheap_node node;
 	/* list_head for per-time-slot list */
 	struct list_head		list;
 	lt_t				release_time;
 	/* all tasks to be released at release_time */
 	struct bheap			heap;
-	/* used to trigger the release */
-	struct hrtimer			timer;
-
-#ifdef CONFIG_RELEASE_MASTER
-	/* used to delegate releases */
-	struct hrtimer_start_on_info	info;
-#endif
-	/* required for the timer callback */
-	rt_domain_t*			dom;
+	/* list of all tasks, used for release callback in reservation */
+	struct list_head		list_head;
 };
 
+void domain_suspend_releases(rt_domain_t* rt);
+void domain_resume_releases(rt_domain_t* rt);
 
 static inline struct task_struct* __next_ready(rt_domain_t* rt)
 {
 	struct bheap_node *hn = bheap_peek(rt->order, &rt->ready_queue);
 	if (hn)
 		return bheap2task(hn);
+	else
+		return NULL;
+}
+
+static inline struct ext_reservation* __next_ready_res(rt_domain_t* rt)
+{
+	struct bheap_node *hn = bheap_peek(rt->order, &rt->ready_queue);
+	if (hn)
+		return bheap2res(hn);
 	else
 		return NULL;
 }
@@ -82,11 +95,23 @@ void __add_ready(rt_domain_t* rt, struct task_struct *new);
 void __merge_ready(rt_domain_t* rt, struct bheap *tasks);
 void __add_release(rt_domain_t* rt, struct task_struct *task);
 
+void __add_ready_res(rt_domain_t* rt, struct ext_reservation* new);
+void __add_release_res(rt_domain_t* rt, struct ext_reservation* res);
+
 static inline struct task_struct* __take_ready(rt_domain_t* rt)
 {
 	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
 	if (hn)
 		return bheap2task(hn);
+	else
+		return NULL;
+}
+
+static inline struct ext_reservation* __take_ready_res(rt_domain_t* rt)
+{
+	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
+	if (hn)
+		return bheap2res(hn);
 	else
 		return NULL;
 }
@@ -100,15 +125,35 @@ static inline struct task_struct* __peek_ready(rt_domain_t* rt)
 		return NULL;
 }
 
+static inline struct ext_reservation* __peek_ready_res(rt_domain_t* rt)
+{
+	struct bheap_node* hn = bheap_peek(rt->order, &rt->ready_queue);
+	if (hn)
+		return bheap2res(hn);
+	else
+		return NULL;
+}
+
 static inline int  is_queued(struct task_struct *t)
 {
 	BUG_ON(!tsk_rt(t)->heap_node);
 	return bheap_node_in_heap(tsk_rt(t)->heap_node);
 }
 
+static inline int is_queued_res(struct ext_reservation* res)
+{
+	BUG_ON(!res->heap_node);
+	return bheap_node_in_heap(res->heap_node);
+}
+
 static inline void remove(rt_domain_t* rt, struct task_struct *t)
 {
 	bheap_delete(rt->order, &rt->ready_queue, tsk_rt(t)->heap_node);
+}
+
+static inline void remove_res(rt_domain_t* rt, struct ext_reservation* res)
+{
+	bheap_delete(rt->order, &rt->ready_queue, res->heap_node);
 }
 
 static inline void add_ready(rt_domain_t* rt, struct task_struct *new)
@@ -120,7 +165,24 @@ static inline void add_ready(rt_domain_t* rt, struct task_struct *new)
 	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
 }
 
+static inline void add_ready_res(rt_domain_t* rt, struct ext_reservation *new)
+{
+	unsigned long flags;
+	/* first we need the write lock for rt_ready_queue */
+	raw_spin_lock_irqsave(&rt->ready_lock, flags);
+	__add_ready_res(rt, new);
+	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
+}
+
 static inline void merge_ready(rt_domain_t* rt, struct bheap* tasks)
+{
+	unsigned long flags;
+	raw_spin_lock_irqsave(&rt->ready_lock, flags);
+	__merge_ready(rt, tasks);
+	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
+}
+
+static inline void merge_ready_res(rt_domain_t* rt, struct bheap* tasks)
 {
 	unsigned long flags;
 	raw_spin_lock_irqsave(&rt->ready_lock, flags);
@@ -139,6 +201,16 @@ static inline struct task_struct* take_ready(rt_domain_t* rt)
 	return ret;
 }
 
+static inline struct ext_reservation* take_ready_res(rt_domain_t* rt)
+{
+	unsigned long flags;
+	struct ext_reservation* ret;
+	/* first we need the write lock for rt_ready_queue */
+	raw_spin_lock_irqsave(&rt->ready_lock, flags);
+	ret = __take_ready_res(rt);
+	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
+	return ret;
+}
 
 static inline void add_release(rt_domain_t* rt, struct task_struct *task)
 {
@@ -148,9 +220,20 @@ static inline void add_release(rt_domain_t* rt, struct task_struct *task)
 	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
 }
 
+static inline void add_release_res(rt_domain_t* rt, struct ext_reservation* res)
+{
+	unsigned long flags;
+	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
+	__add_release_res(rt, res);
+	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
+}
+
 #ifdef CONFIG_RELEASE_MASTER
 void __add_release_on(rt_domain_t* rt, struct task_struct *task,
 		      int target_cpu);
+
+void __add_release_res_on(rt_domain_t* rt, struct ext_reservation* res,
+			  int target_cpu);
 
 static inline void add_release_on(rt_domain_t* rt,
 				  struct task_struct *task,
@@ -159,6 +242,16 @@ static inline void add_release_on(rt_domain_t* rt,
 	unsigned long flags;
 	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
 	__add_release_on(rt, task, target_cpu);
+	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
+}
+
+static inline void add_release_res_on(rt_domain_t* rt,
+				  struct ext_reservation* res,
+				  int target_cpu)
+{
+	unsigned long flags;
+	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
+	__add_release_res_on(rt, res, target_cpu);
 	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
 }
 #endif

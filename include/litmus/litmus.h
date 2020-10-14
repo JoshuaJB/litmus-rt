@@ -6,6 +6,7 @@
 #ifndef _LINUX_LITMUS_H_
 #define _LINUX_LITMUS_H_
 
+#include <linux/sched.h>
 #include <linux/smp.h>
 #include <litmus/ctrlpage.h>
 
@@ -121,6 +122,7 @@ static inline lt_t litmus_clock(void)
 void preempt_if_preemptable(struct task_struct* t, int on_cpu);
 
 #define bheap2task(hn) ((struct task_struct*) hn->value)
+#define bheap2res(hn) ((struct ext_reservation*) hn->value)
 
 static inline int is_present(struct task_struct* t)
 {
