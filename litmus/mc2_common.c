@@ -16,18 +16,6 @@
 
 #include <litmus/mc2_common.h>
 
-long mc2_task_client_init(struct task_client *tc, struct mc2_task *mc2_param, struct task_struct *tsk, struct reservation *res)
-{
-	task_client_init(tc, tsk, res);
-	if ((mc2_param->crit < CRIT_LEVEL_A) ||
-		(mc2_param->crit > CRIT_LEVEL_C))
-		return -EINVAL;
-
-	TRACE_TASK(tsk, "mc2_task_client_init: crit_level = %d\n", mc2_param->crit);
-
-	return 0;
-}
-
 asmlinkage long sys_set_mc2_task_param(pid_t pid, struct mc2_task __user * param)
 {
 	struct task_struct *target;
