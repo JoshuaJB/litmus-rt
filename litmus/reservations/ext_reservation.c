@@ -45,6 +45,7 @@ void init_ext_reservation(
 	res->rel_heap = release_heap_alloc(GFP_ATOMIC);
 	bheap_node_init(&res->heap_node, res);
 	INIT_LIST_HEAD(&res->ln);
+	INIT_LIST_HEAD(&res->all_list);
 }
 
 void clean_up_ext_reservation(struct ext_reservation* res)

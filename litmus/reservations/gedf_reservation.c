@@ -93,7 +93,6 @@ static void requeue(
 		__add_ready_res(&gedf_env->domain, &gedf_res->res);
 	else
 		__add_release_res(&gedf_env->domain, &gedf_res->res);
-
 }
 
 static void link_task_to_cpu(
@@ -307,6 +306,8 @@ long alloc_gedf_task_reservation(
 	init_ext_reservation(&gedf_task_res->gedf_res.res, task->pid, &gedf_task_ops);
 
 	gedf_task_res->task = task;
+	gedf_task_res->gedf_res.res.priority = ULLONG_MAX - get_rt_relative_deadline(task);
+	gedf_task_res->gedf_res.res.cur_budget = get_exec_cost(task);
 
 	*_res = gedf_task_res;
 	return 0;
@@ -651,7 +652,11 @@ static void gedf_env_update_time(
 	if (!entry->scheduled)
 		return;
 
-	/* tells scheduled res to drain its budget */
+	/* tells scheduled res to drain its budget.
+	 * In the situation of 2 cores having the same scheduled(detailed in comment below), the task will be
+	 * out of budget. This means drain_budget just atomically sets cur_budget to 0 on drain.
+	 * Therefore, no lock is needed for this operation
+	 */
 	entry->scheduled->res.ops->drain_budget(&entry->scheduled->res, how_much, cpu);
 
 	/* if flagged for removal from environment, invoke shutdown callback */
@@ -659,18 +664,32 @@ static void gedf_env_update_time(
 		/* assumed to already been unlinked by whatever set will_remove */
 		entry->scheduled->res.ops->shutdown(&entry->scheduled->res);
 		entry->scheduled = NULL;
-	} else if (!entry->scheduled->res.cur_budget) {
+	}
+
+	/* We need to lock this whole section due to how budget draining works.
+	 * check_for_preemption can be called before budget is properly updated, which,
+	 * through multiple parallel calls to check_for_preemption may end up linking
+	 * a task that's out of budget(but not when it is ran through check_for_preemption) to
+	 * a core other than this one.
+	 * That core can then experience multiple reschedule calls due to the multiple calls to
+	 * check_for_preemption, which will make the linked out of budget task into scheduled.
+	 * Now we have an interesting dilemma. This core and the other core both sees that its
+	 * scheduling the same out of budget task. So we need a way to break symmetry and let
+	 * one core do nothing. By checking for !cur_budget and replenishing budget under a lock,
+	 * we can achieve this.
+	 */
+	raw_spin_lock_irqsave(&gedf_env->domain.ready_lock, flags);
+	if (entry->scheduled && !entry->scheduled->res.cur_budget) {
 		entry->scheduled->res.ops->replenish_budget(&entry->scheduled->res, cpu);
 		/* unlink and requeue if not blocked and not np*/
 		if (!entry->scheduled->blocked &&
 				!entry->scheduled->res.ops->is_np(&entry->scheduled->res, cpu)) {
-			raw_spin_lock_irqsave(&gedf_env->domain.ready_lock, flags);
 			unlink(gedf_env, entry->scheduled);
 			requeue(gedf_env, entry->scheduled);
 			check_for_preemptions(gedf_env);
-			raw_spin_unlock_irqrestore(&gedf_env->domain.ready_lock, flags);
 		}
 	}
+	raw_spin_unlock_irqrestore(&gedf_env->domain.ready_lock, flags);
 }
 
 /* callback for how the domain will release jobs */
