@@ -8,7 +8,6 @@
 
 #include <litmus/litmus.h>
 #include <litmus/debug_trace.h>
-#include <litmus/mc2_common.h>
 
 /* only one page for now, but we might want to add a RO version at some point */
 

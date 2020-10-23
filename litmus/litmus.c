@@ -137,7 +137,10 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		       "because task density > 1.0\n", pid);
 		goto out_unlock;
 	}
-	if (tp.cls != RT_CLASS_HARD &&
+	if (tp.cls != CRIT_LEVEL_A &&
+	    tp.cls != CRIT_LEVEL_B &&
+	    tp.cls != CRIT_LEVEL_C &&
+	    tp.cls != RT_CLASS_HARD &&
 	    tp.cls != RT_CLASS_SOFT &&
 	    tp.cls != RT_CLASS_BEST_EFFORT)
 	{

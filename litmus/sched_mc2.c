@@ -25,44 +25,39 @@
 #include <litmus/trace.h>
 
 #include <litmus/np.h>
-#include <litmus/mc2_common.h>
 #include <litmus/reservations/reservation.h>
 #include <litmus/reservations/alloc.h>
 #include <litmus/reservations/gedf_reservation.h>
 
 #define BUDGET_ENFORCEMENT_AT_C 0
 
-static void do_partition(enum crit_level lv, int cpu) {
+static void do_partition(task_class_t lv, int cpu) {
 	/* Stub: this was implemented in cache_proc.c to switch out the way
 	 * lockdown register on a context switch on the old i.MX6 boards that
 	 * MC^2 used to use. On x86, we use RDT/resctrl subsystem as
 	 * implemented by Intel's CAT and by AMD's Platform QoS Extensions. */
 }
 
-/* mc2_task_state - a task state structure */
 struct mc2_task_state {
-	struct task_client res_info;
 	/* if cpu == -1, this task is a global task (level C) */
 	int cpu;
 	/* used to avoid cross-processor locks? */
 	bool has_departed;
-	struct mc2_task mc2_param;
+	/* sup and gedf task reservations */
+	struct task_client res_info;
 	struct ext_reservation* ext_res;
 };
 
-/* mc2_cpu_state - maintain the scheduled state
- * timer : timer for partitioned tasks (level A and B)
- */
 struct mc2_cpu_state {
 	raw_spinlock_t lock;
 
-	struct sup_reservation_environment sup_env;
+	struct sup_reservation_environment* sup_envs;
+	/* Timer for budget enforcement at all levels */
 	struct hrtimer timer;
 
 	int cpu;
 	struct task_struct* scheduled;
 };
-
 static DEFINE_PER_CPU(struct mc2_cpu_state, mc2_cpu_state);
 
 struct gedf_reservation_environment* gedf_env;
@@ -75,6 +70,18 @@ static DEFINE_PER_CPU(lt_t, last_update_time);
 #define cpu_state_for(cpu_id)	(&per_cpu(mc2_cpu_state, cpu_id))
 #define local_cpu_state()	(this_cpu_ptr(&mc2_cpu_state))
 
+#define NUM_CRIT_LEVELS 3
+#define NUM_SUP_ENVS 2
+/**
+ * sup_for_each_env - Iterate over single uniprocessor (sup) reservations
+ * @env:  The &struct sup_reservation_environment to use as a loop cursor
+ * @envs: The &struct sup_reservation_environment to start of env array
+ */
+#define sup_for_each_env(env, envs) \
+	for (env=&envs[CRIT_LEVEL_A-CRIT_LEVEL_A]; \
+	     env <= &envs[CRIT_LEVEL_B-CRIT_LEVEL_A]; env++)
+
+
 /* get_mc2_state - get the task's state
  * Origin: P-RES
  */
@@ -84,19 +91,12 @@ static struct mc2_task_state* get_mc2_state(struct task_struct *tsk)
 }
 
 /* get_task_crit_level - return the criticaility level of a task */
-static enum crit_level get_task_crit_level(struct task_struct *tsk)
+static task_class_t get_task_crit_level(struct task_struct *tsk)
 {
-	struct mc2_task *mp;
-
 	if (!tsk || !is_realtime(tsk))
 		return NUM_CRIT_LEVELS;
 
-	mp = tsk_rt(tsk)->mc2_data;
-
-	if (!mp)
-		return NUM_CRIT_LEVELS;
-	else
-		return mp->crit;
+	return tsk_rt(tsk)->task_params.cls;
 }
 
 /* task_depart - Remove a task from its reservation.
@@ -143,7 +143,7 @@ static void task_departs(struct task_struct *tsk, int job_complete)
 		sched_trace_task_completion(tsk, 0);
 }
 
-/* task_arrive - put a task into its reservation
+/* task_arrives - put a task into its reservation
  * @param tsk Task to add.
  * @note: Lock must be held.
  * @origin: P-RES, sched_ext, Joshua
@@ -196,21 +196,26 @@ static long mc2_complete_job(void)
 }
 
 /* mc2_dispatch - Select the next Level-A or -B task to schedule.
- * Origin: Namhoon
+ * Origin: Namhoon + Joshua
  */
-struct task_struct* mc2_dispatch(struct sup_reservation_environment* sup_env, struct mc2_cpu_state* state)
+struct task_struct* mc2_dispatch(struct mc2_cpu_state* state)
 {
 	struct reservation *res, *next;
 	struct task_struct *tsk = NULL;
+	struct sup_reservation_environment *env;
 	lt_t time_slice;
 
-	// sup_env->active_reservations is sorted in order of priority (?)
-	list_for_each_entry_safe(res, next, &sup_env->active_reservations, list) {
-		if (res->state == RESERVATION_ACTIVE) {
-			tsk = res->ops->dispatch_client(res, &time_slice);
-			if (likely(tsk)) {
-				sup_scheduler_update_after(sup_env, res->cur_budget);
-				return tsk;
+	// sup_envs is sorted by level (Level-A, then Level-B)
+	sup_for_each_env(env, state->sup_envs) {
+		// active_reservations is sorted by priority
+		// (deadline in EDF, static priority in RM)
+		list_for_each_entry_safe(res, next, &env->active_reservations, list) {
+			if (res->state == RESERVATION_ACTIVE) {
+				tsk = res->ops->dispatch_client(res, &time_slice);
+				if (likely(tsk)) {
+					sup_scheduler_update_after(env, res->cur_budget);
+					return tsk;
+				}
 			}
 		}
 	}
@@ -233,7 +238,7 @@ static inline void pre_schedule(struct task_struct *prev, int cpu)
 // Timestamping and cache partitioning
 static inline void post_schedule(struct task_struct *next, int cpu)
 {
-	enum crit_level lev;
+	task_class_t lev;
 	if ((!next) || !is_realtime(next)) {
 		//do_partition(NUM_CRIT_LEVELS, -1);
 		return;
@@ -263,6 +268,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 {
 	int np, blocks, exists;
 	lt_t update;
+	struct sup_reservation_environment* env;
 	/* next == NULL means "schedule background work". */
 	lt_t now = litmus_clock();
 	struct mc2_cpu_state *state = local_cpu_state();
@@ -282,8 +288,10 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	np = exists && is_np(state->scheduled);
 
 	/* update time */
-	state->sup_env.will_schedule = true;
-	sup_update_time(&state->sup_env, now);
+	sup_for_each_env(env, state->sup_envs) {
+		env->will_schedule = true;
+		sup_update_time(env, now);
+	}
 
 	// Blocked tasks have already been handled if `has_departed`
 	BUG_ON(is_realtime(current) && blocks && !((struct mc2_task_state*)prev->rt_param.plugin_state)->has_departed);
@@ -291,7 +299,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	/* figure out what to schedule next */
 	// Iterate through all core-local reservations to check if they have anything to run
 	if (!np)
-		state->scheduled = mc2_dispatch(&state->sup_env, state);
+		state->scheduled = mc2_dispatch(state);
 
 	// If core-local reservations have nothing to run, ask the global reservation
 	// Note that gedf_env handles non-preemptivity internally
@@ -308,10 +316,13 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	}
 
 	/* program scheduler timer */
-	// XXX: What is this???
-	state->sup_env.will_schedule = false;
 	// This is safe as the no update timer needed magic value is ULLONG_MAX
-	update = min(global_next_scheduler_update, state->sup_env.next_scheduler_update);
+	update = global_next_scheduler_update;
+	sup_for_each_env(env, state->sup_envs) {
+		// XXX: What is this???
+		env->will_schedule = false;
+		update = min(update, env->next_scheduler_update);
+	}
 	if (update == SUP_NO_SCHEDULER_UPDATE) {
 		if (hrtimer_active(&state->timer)) {
 			TRACE("canceling timer...at %llu\n",
@@ -440,70 +451,96 @@ static void mc2_task_resume(struct task_struct  *tsk)
  * Called with preemption disabled and g_lock /not/ held
  * This only validates and initializes immutable state. This DOES NOT insert
  * anything into any runqueue or set up mutable state (such as release time)
+ * For Level-A and -B, this creates a reservation if on is not specified.
  */
 static long mc2_admit_task(struct task_struct *tsk)
 {
 	long err = -EINVAL;
 	unsigned long flags;
-	struct reservation *res;
 	struct mc2_cpu_state *state;
 	struct mc2_task_state *tinfo = kzalloc(sizeof(*tinfo), GFP_ATOMIC);
-	struct mc2_task *mp = tsk_rt(tsk)->mc2_data;
+	struct rt_task *task_params = &tsk_rt(tsk)->task_params;
 
 	if (!tinfo)
 		return -ENOMEM;
 
-	if (!mp) {
-		printk(KERN_ERR "mc2_admit_task: criticality level has not been set\n");
-		err = -ESRCH;
-		goto out;
-	}
-
-	if (mp->crit < CRIT_LEVEL_A || mp->crit > CRIT_LEVEL_C) {
+	if (task_params->cls < CRIT_LEVEL_A || task_params->cls > CRIT_LEVEL_C) {
 		printk(KERN_ERR "mc2_admit_task: invalid criticality level\n");
 		err = -EINVAL;
 		goto out;
 	}
 
 	// This is okay, as tinfo will be freed if we fail
-	tinfo->mc2_param.crit = mp->crit;
-	tinfo->mc2_param.res_id = mp->res_id;
 	tinfo->has_departed = true;
 
 	// Setup a core-local or global reservation as appropriate
-	if (mp->crit < CRIT_LEVEL_C) {
+	if (task_params->cls < CRIT_LEVEL_C) {
+		struct sup_reservation_environment* env;
+		struct reservation *res;
+		/* We assume that the caller migrated to the correct CPU first
+		 * if they intend to migrate to an existing reservation. */
 		tinfo->cpu = task_cpu(tsk);
 		state = cpu_state_for(task_cpu(tsk));
+		env = &state->sup_envs[task_params->cls];
 		raw_spin_lock_irqsave(&state->lock, flags);
 
-		/* found the appropriate reservation */
-		if ((res = sup_find_by_id(&state->sup_env, mp->res_id))) {
-			// Sets up task_client state to point to the reservation
-			task_client_init(&tinfo->res_info, tsk, res);
-			err = 0;
+		if ((res = sup_find_by_id(env, task_params->cpu))) {
+			/* Explicitly created reservations go into the Level-A env,
+			 * so make sure that this isn't a Level-B task if it wants
+			 * to use an explicit reservation.
+			 */
+			if (task_params->cls != CRIT_LEVEL_A)
+				err = -EINVAL;
+			else
+				err = 0;
 		} else {
-			printk(KERN_WARNING "Could not find reservation %d on "
-				"core %d for task %s/%d\n",
-				tsk_rt(tsk)->task_params.cpu, state->cpu,
-				tsk->comm, tsk->pid);
+			// Implictly create a reservation
+			struct reservation_config config;
+			if (task_params->cpu > NR_CPUS) {
+				printk(KERN_ERR "requested CPU %d does"
+				       " not exist\n", task_params->cpu);
+				err = -EINVAL;
+				goto out;
+			}
+			config.id = tsk->pid;
+			config.cpu = tsk_rt(tsk)->task_params.cpu;
+			// If priority is LITMUS_NO_PRIORITY, EDF scheduling is implied
+			config.priority = tsk_rt(tsk)->task_params.priority;
+			config.polling_params.period = tsk_rt(tsk)->task_params.period;
+			// Try to respect the budget management setting on the task
+			if (tsk_rt(tsk)->task_params.budget_policy == NO_ENFORCEMENT)
+				config.polling_params.budget = tsk_rt(tsk)->task_params.period;
+			else
+				config.polling_params.budget = tsk_rt(tsk)->task_params.exec_cost;
+			config.polling_params.offset = tsk_rt(tsk)->task_params.phase;
+			config.polling_params.relative_deadline = tsk_rt(tsk)->task_params.relative_deadline;
+
+			err = alloc_polling_reservation(PERIODIC_POLLING, &config, &res);
+			sup_add_new_reservation(env, res);
+			err = 0;
 		}
+		// Sets up task_client state to point to the reservation
+		task_client_init(&tinfo->res_info, tsk, res);
 
 		raw_spin_unlock_irqrestore(&state->lock, flags);
-	} else if (mp->crit == CRIT_LEVEL_C) {
+	} else if (task_params->cls == CRIT_LEVEL_C) {
 		struct gedf_task_reservation* gedf_task_res;
-		tinfo->cpu = -1;
+		lt_t max_budget = ULLONG_MAX; // No enforcement
+		tinfo->cpu = -1; // Indicates global
+		if (tsk_rt(tsk)->task_params.budget_policy != NO_ENFORCEMENT)
+			max_budget = tsk_rt(tsk)->task_params.exec_cost;
 
-		// Sets of gedf_task_reservation to point to gedf_env
-		if (!(err = alloc_gedf_task_reservation(&gedf_task_res, tsk))) {
+		// Sets parent of gedf_task_reservation to point to gedf_env
+		if (!(err = alloc_gedf_task_reservation(&gedf_task_res, tsk, max_budget))) {
 			gedf_task_res->gedf_res.res.par_env = &gedf_env->env;
 			tinfo->ext_res = (struct ext_reservation*)gedf_task_res;
 		}
 	}
 
-	/* rt_param will be cleared if admission fails, so this is safe */
-	/* disable LITMUS^RT's per-thread budget enforcement */
-	tsk_rt(tsk)->task_params.budget_policy = NO_ENFORCEMENT;
+	// rt_param will be cleared if admission fails, so this is safe
 	tsk_rt(tsk)->plugin_state = tinfo;
+	// We delegate budget enforcement to reservations, so disable LITMUS's enforcement
+	tsk_rt(tsk)->task_params.budget_policy = NO_ENFORCEMENT;
 out:
 	// This function is full of memory leaks. See alloc/init client/reservation.
 	if (err)
@@ -523,7 +560,7 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 	struct mc2_task_state* tinfo = get_mc2_state(tsk);
 	struct mc2_cpu_state *state;
 	struct reservation *res;
-	enum crit_level lv = get_task_crit_level(tsk);
+	task_class_t lv = get_task_crit_level(tsk);
 	lt_t release = 0;
 
 	TRACE_TASK(tsk, "new RT task %llu (on_rq:%d, running:%d)\n",
@@ -547,8 +584,7 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 		release = litmus_clock();
 		tinfo->ext_res->replenishment_time = release;
 	} else {
-		// Wait for the next hyperperiod
-		res = sup_find_by_id(&state->sup_env, tinfo->mc2_param.res_id);
+		res = sup_find_by_id(&state->sup_envs[lv], tinfo->res_info.client.reservation->id);
 	}
 
 	// Tasks can arrive in a blocked state if !on_runqueue && !is_running
@@ -556,6 +592,7 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 		task_arrives(tsk);
 
 	// This has to happen after task arrival has set next_replenishment
+	// Wait for the next hyperperiod
 	if (lv != CRIT_LEVEL_C)
 		release = res->next_replenishment;
 	BUG_ON(!release);
@@ -569,6 +606,7 @@ static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 }
 
 /* mc2_reservation_destroy - reservation_destroy system call backend
+ * @note Can only destroy Level-A reservations.
  * Origin: Namhoon
  */
 static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
@@ -578,16 +616,11 @@ static long mc2_reservation_destroy(unsigned int reservation_id, int cpu)
 	unsigned long flags;
 	long err = 0;
 
-	// Reservations are not required for globally scheduled tasks
-	// Fail silently for backwards compatibility
-	if (cpu == -1)
-		return err;
-
 	/* if the reservation is partitioned reservation */
 	state = cpu_state_for(cpu);
 	raw_spin_lock_irqsave(&state->lock, flags);
 
-	res = sup_find_by_id(&state->sup_env, reservation_id);
+	res = sup_find_by_id(&state->sup_envs[CRIT_LEVEL_A], reservation_id);
 	if (res)
 		destroy_reservation(res);
 	else
@@ -627,15 +660,25 @@ static void mc2_task_exit(struct task_struct *tsk)
 	if (tsk->state == TASK_RUNNING) 
 		task_departs(tsk, 0);
 
+	// Cleanup any automatically created reservations
+	if (tinfo->cpu != -1) {
+		struct reservation* res = tinfo->res_info.client.reservation;
+		// Automatically created reservations use the task's PID
+		if (tsk->pid == res->id)
+			destroy_reservation(res);
+	} else {
+		tinfo->ext_res->ops->shutdown(tinfo->ext_res);
+	}
+
 	raw_spin_unlock_irqrestore(&state->lock, flags);
 
 	kfree(tsk_rt(tsk)->plugin_state);
 	tsk_rt(tsk)->plugin_state = NULL;
-	kfree(tsk_rt(tsk)->mc2_data);
-	tsk_rt(tsk)->mc2_data = NULL;
 }
 
 /* mc2_reservation_create - reservation_create system call backend
+ * @note Can only be used to create Level-A reservations. Level-B and Level-C
+ *       reservations are implicit (see mc2_admit_task()).
  * Origin: P-RES
  */
 static long do_mc2_reservation_create(
@@ -672,9 +715,9 @@ static long do_mc2_reservation_create(
 	 */
 	state = cpu_state_for(config->cpu);
 	raw_spin_lock_irqsave(&state->lock, flags);
-	res = sup_find_by_id(&state->sup_env, config->id);
+	res = sup_find_by_id(&state->sup_envs[CRIT_LEVEL_A], config->id);
 	if (!res) {
-		sup_add_new_reservation(&state->sup_env, new_res);
+		sup_add_new_reservation(&state->sup_envs[CRIT_LEVEL_A], new_res);
 		err = config->id;
 	} else {
 		err = -EEXIST;
@@ -687,7 +730,14 @@ static long do_mc2_reservation_create(
 	return err;
 }
 
-/* Origin: P-RES */
+/* mc2_reservation_create: Optionally specify Level-A reservations
+ * @description MC^2 uses two traditional reservation environments per core.
+ *              (One for Level-B and one for Level-A.) This can only be used to
+ *              create reservations in the Level-A environment. Ideally, I'd
+ *              get rid of this entirely, but it's needed to specify the table
+ *              layout if a table-driven reservation is used at Level-A.
+ * Origin: P-RES + Joshua
+ */
 static long mc2_reservation_create(int res_type, void* __user _config)
 {
 	struct reservation_config config;
@@ -703,14 +753,20 @@ static long mc2_reservation_create(int res_type, void* __user _config)
 		return -EINVAL;
 	}
 
-	/* Table-driven reservations cannot be global */
-	if (config.cpu == -1 && res_type == TABLE_DRIVEN)
+	// Reservations are only supported for core-local tasks
+	if (config.cpu < 0)
 		return -EINVAL;
 
-	// Reservations are not required for globally scheduled tasks
-	// Fail silently for backwards compatibility
-	if (config.cpu == -1)
-		return 0;
+	// Manually specified reservation IDs must be larger than NR_CPUS
+	// as we autodetect task_param.cpu as a reservation if it's larger
+	// than NR_CPUS. If less, we create an implicit reservation on the
+	// specified core.
+	if (config.id < NR_CPUS) {
+		printk(KERN_WARNING "Invalid reservation ID %d on"
+		       "core %d. MC^2 reservation IDs start at %d",
+		       smp_processor_id(), config.id, NR_CPUS);
+		return -EINVAL;
+	}
 
 	return do_mc2_reservation_create(res_type, &config);
 }
@@ -757,6 +813,7 @@ static long mc2_activate_plugin(void)
 {
 	int cpu, res;
 	struct mc2_cpu_state *state;
+	struct sup_reservation_environment *env;
 	lt_t now = litmus_clock();
 
 	if ((res = alloc_gedf_reservation_environment(&gedf_env, num_online_cpus())) < 0)
@@ -774,8 +831,13 @@ static long mc2_activate_plugin(void)
 		raw_spin_lock_init(&state->lock);
 		state->cpu = cpu;
 		state->scheduled = NULL;
-		sup_init(&state->sup_env);
-
+		// Setup the reservation environments for this core
+		state->sup_envs = kzalloc(
+				sizeof(struct sup_reservation_environment)*NUM_SUP_ENVS,
+				GFP_ATOMIC);
+		sup_for_each_env(env, state->sup_envs)
+			sup_init(env);
+		// Setup the budget/quanta timer
 		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 		state->timer.function = on_scheduling_timer;
 	}
@@ -803,6 +865,8 @@ static long mc2_deactivate_plugin(void)
 	int cpu;
 	struct mc2_cpu_state *state;
 	struct reservation *res;
+	struct reservation *temp;
+	struct sup_reservation_environment *env;
 
 	gedf_env->env.ops->shutdown(&gedf_env->env);
 
@@ -812,11 +876,9 @@ static long mc2_deactivate_plugin(void)
 
 		hrtimer_cancel(&state->timer);
 
-		while (!list_empty(&state->sup_env.all_reservations)) {
-			res = list_first_entry(
-				&state->sup_env.all_reservations,
-			        struct reservation, all_list);
-			destroy_reservation(res);
+		sup_for_each_env(env, state->sup_envs) {
+			list_for_each_entry_safe(res, temp, &env->all_reservations, all_list)
+				destroy_reservation(res);
 		}
 
 		raw_spin_unlock(&state->lock);

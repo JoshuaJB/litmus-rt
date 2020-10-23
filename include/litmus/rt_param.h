@@ -22,6 +22,9 @@ static inline int lt_after_eq(lt_t a, lt_t b)
 
 /* different types of clients */
 typedef enum {
+	CRIT_LEVEL_A,
+	CRIT_LEVEL_B,
+	CRIT_LEVEL_C,
 	RT_CLASS_HARD,
 	RT_CLASS_SOFT,
 	RT_CLASS_BEST_EFFORT
@@ -164,7 +167,6 @@ struct rt_job {
 };
 
 struct pfair_param;
-struct mc2_task;
 
 /*	RT task parameters for scheduling extensions
  *	These parameters are inherited during clone and therefore must
@@ -284,9 +286,6 @@ struct rt_param {
 
 	/* Pointer to the page shared between userspace and kernel. */
 	struct control_page * ctrl_page;
-
-	/* Mixed-criticality specific data */
-	struct mc2_task* mc2_data;
 };
 
 #endif
