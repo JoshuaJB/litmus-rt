@@ -11,7 +11,6 @@
 struct gedf_reservation {
 	struct ext_reservation res;
 	struct gedf_cpu_entry* linked_on;
-	lt_t cur_budget;
 	int will_remove;
 	int blocked;
 };
@@ -45,7 +44,8 @@ long alloc_gedf_container_reservation(
 
 long alloc_gedf_task_reservation(
 	struct gedf_task_reservation** _res,
-	struct task_struct* task
+	struct task_struct* task,
+	lt_t max_budget
 );
 
 /* environment for scheduling reservations via gedf */

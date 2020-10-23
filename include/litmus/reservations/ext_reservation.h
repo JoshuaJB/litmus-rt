@@ -75,6 +75,7 @@ struct ext_reservation {
 	lt_t priority;
 	lt_t replenishment_time;
 	lt_t cur_budget;
+	lt_t max_budget;
 
 	/* budget stats */
 	lt_t budget_consumed; /* how much budget consumed in this allocation cycle? */

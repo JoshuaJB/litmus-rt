@@ -241,7 +241,7 @@ static void gedf_task_replenish_budget(
 		TRACE_TASK(t, "overrun budget!\n");
 	}
 	res->budget_consumed = 0;
-	res->cur_budget = get_exec_cost(t);
+	res->cur_budget = res->max_budget;
 }
 
 static void gedf_drain_budget(
@@ -296,7 +296,7 @@ static struct ext_reservation_ops gedf_task_ops =
 
 long alloc_gedf_task_reservation(
 	struct gedf_task_reservation** _res,
-	struct task_struct* task)
+	struct task_struct* task, lt_t max_budget)
 {
 	struct gedf_task_reservation* gedf_task_res;
 	gedf_task_res = kzalloc(sizeof(*gedf_task_res), GFP_KERNEL);
@@ -307,7 +307,8 @@ long alloc_gedf_task_reservation(
 
 	gedf_task_res->task = task;
 	gedf_task_res->gedf_res.res.priority = ULLONG_MAX - get_rt_relative_deadline(task);
-	gedf_task_res->gedf_res.res.cur_budget = get_exec_cost(task);
+	gedf_task_res->gedf_res.res.max_budget = max_budget;
+	gedf_task_res->gedf_res.res.cur_budget = max_budget;
 
 	*_res = gedf_task_res;
 	return 0;
