@@ -8,6 +8,7 @@
 #include <litmus/bheap.h>
 #include <litmus/rt_domain.h>
 #include <litmus/jobs.h>
+#include <litmus/budget.h>
 #include <litmus/np.h>
 #include <litmus/sched_trace.h>
 #include <litmus/debug_trace.h>
@@ -100,13 +101,28 @@ static void link_task_to_cpu(
 	struct gedf_reservation* linked,
 	struct gedf_cpu_entry* entry)
 {
+	struct gedf_cpu_entry* on_cpu;
+	struct gedf_reservation* tmp;
 
 	if (entry->linked)
 		entry->linked->linked_on = NULL;
 
-	if (linked)
-		linked->linked_on = entry;
+	if (linked) {
+		on_cpu = linked->scheduled_on;
+		if (on_cpu) {
+			BUG_ON(on_cpu->linked == linked);
 
+			if (entry != on_cpu) {
+				tmp = on_cpu->linked;
+				linked->linked_on = on_cpu;
+				on_cpu->linked = linked;
+				update_cpu_position(on_cpu, &gedf_env->cpu_heap);
+				linked = tmp;
+			}
+		}
+		if (linked)
+			linked->linked_on = entry;
+	}
 	entry->linked = linked;
 	update_cpu_position(entry, &gedf_env->cpu_heap);
 }
@@ -206,7 +222,11 @@ static struct task_struct* gedf_task_dispatch_client(
 	lt_t* time_slice,
 	int cpu)
 {
-	return ((struct gedf_task_reservation*)res)->task;
+	struct gedf_task_reservation* tmp = (struct gedf_task_reservation*)res;
+	if (budget_exhausted(tmp->task))
+		return NULL;
+	else
+		return tmp->task;
 }
 
 static void gedf_replenish_budget(
@@ -513,8 +533,12 @@ static void gedf_env_suspend(
 		unlink(gedf_env, entry->linked);
 		requeue(gedf_env, tmp);
 	}
-	if (entry->scheduled && entry->scheduled->res.ops->on_preempt)
-		entry->scheduled->res.ops->on_preempt(&entry->scheduled->res, cpu);
+	if (entry->scheduled) {
+		if (entry->scheduled->res.ops->on_preempt)
+			entry->scheduled->res.ops->on_preempt(&entry->scheduled->res, cpu);
+		if (entry->scheduled->scheduled_on == entry)
+			entry->scheduled->scheduled_on = NULL;
+	}
 	entry->scheduled = NULL;
 
 	/* this essentially removes the cpu from scheduling consideration */
@@ -615,10 +639,17 @@ static struct task_struct* gedf_env_dispatch(
 
 	/* if linked and scheduled differ, preempt and schedule accordingly */
 	if (!np && entry->scheduled != entry->linked) {
-		if (entry->scheduled && entry->scheduled->res.ops->on_preempt)
-			entry->scheduled->res.ops->on_preempt(&entry->scheduled->res, cpu);
-		if (entry->linked && entry->linked->res.ops->on_schedule)
-			entry->linked->res.ops->on_schedule(&entry->linked->res, cpu);
+		if (entry->scheduled) {
+			if (entry->scheduled->res.ops->on_preempt)
+				entry->scheduled->res.ops->on_preempt(&entry->scheduled->res, cpu);
+			if (entry->scheduled->scheduled_on == entry)
+				entry->scheduled->scheduled_on = NULL;
+		}
+		if (entry->linked) {
+			entry->linked->scheduled_on = entry;
+			if (entry->linked->res.ops->on_schedule)
+				entry->linked->res.ops->on_schedule(&entry->linked->res, cpu);
+		}
 		entry->scheduled = entry->linked;
 	}
 	raw_spin_unlock_irqrestore(&gedf_env->domain.ready_lock, flags);
@@ -647,7 +678,6 @@ static void gedf_env_update_time(
 	gedf_env = container_of(env, struct gedf_reservation_environment, env);
 	entry = &gedf_env->cpu_entries[cpu];
 
-	BUG_ON(!bheap_node_in_heap(entry->hn));
 	BUG_ON(entry->id != cpu);
 
 	if (!entry->scheduled)

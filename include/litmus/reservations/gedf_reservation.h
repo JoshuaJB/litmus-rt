@@ -11,6 +11,7 @@
 struct gedf_reservation {
 	struct ext_reservation res;
 	struct gedf_cpu_entry* linked_on;
+	struct gedf_cpu_entry* scheduled_on;
 	int will_remove;
 	int blocked;
 };
