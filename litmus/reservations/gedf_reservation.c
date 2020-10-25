@@ -8,7 +8,6 @@
 #include <litmus/bheap.h>
 #include <litmus/rt_domain.h>
 #include <litmus/jobs.h>
-#include <litmus/budget.h>
 #include <litmus/np.h>
 #include <litmus/sched_trace.h>
 #include <litmus/debug_trace.h>
@@ -222,11 +221,7 @@ static struct task_struct* gedf_task_dispatch_client(
 	lt_t* time_slice,
 	int cpu)
 {
-	struct gedf_task_reservation* tmp = (struct gedf_task_reservation*)res;
-	if (budget_exhausted(tmp->task))
-		return NULL;
-	else
-		return tmp->task;
+	return ((struct gedf_task_reservation*)res)->task;
 }
 
 static void gedf_replenish_budget(
