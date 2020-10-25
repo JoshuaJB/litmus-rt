@@ -75,7 +75,6 @@ typedef enum {
 	LRT_release_ts,
 	LRT_get_current_budget,
 	LRT_reservation_destroy,
-	LRT_set_mc2_task_param,
 } litmus_syscall_id_t;
 
 union litmus_syscall_args {
@@ -100,11 +99,6 @@ union litmus_syscall_args {
 		lt_t __user *expended;
 		lt_t __user *remaining;
 	} get_current_budget;
-
-	struct {
-		pid_t pid;
-		struct mc2_task __user *param;
-	} set_mc2_task_param;
 
 	struct {
 		uint32_t reservation_id;

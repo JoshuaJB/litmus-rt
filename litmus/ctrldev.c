@@ -134,7 +134,6 @@ asmlinkage long sys_wait_for_job_release(unsigned int job);
 asmlinkage long sys_wait_for_ts_release(void);
 asmlinkage long sys_release_ts(lt_t __user *__when);
 asmlinkage long sys_reservation_destroy(unsigned int reservation_id, int cpu);
-asmlinkage long sys_set_mc2_task_param(pid_t pid, struct mc2_task __user *param);
 
 static long litmus_ctrl_ioctl(struct file *filp,
 	unsigned int cmd, unsigned long arg)
@@ -157,7 +156,6 @@ static long litmus_ctrl_ioctl(struct file *filp,
 	case LRT_get_current_budget:
 	case LRT_od_open:
 	case LRT_reservation_destroy:
-	case LRT_set_mc2_task_param:
 		/* multiple arguments => need to get args via pointer */
 		/* get syscall parameters */
 		if (copy_from_user(&syscall_args, (void*) arg,
@@ -192,10 +190,6 @@ static long litmus_ctrl_ioctl(struct file *filp,
 			return sys_reservation_destroy(
 				syscall_args.reservation_destroy.reservation_id,
 				syscall_args.reservation_destroy.cpu);
-		case LRT_set_mc2_task_param:
-			return sys_set_mc2_task_param(
-				syscall_args.set_mc2_task_param.pid,
-				syscall_args.set_mc2_task_param.param);
 		}
 		printk(KERN_DEBUG "Weird litmus od_open cmd: %d\n", cmd);
 		return -EINVAL;
