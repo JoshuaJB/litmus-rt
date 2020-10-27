@@ -331,7 +331,7 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 		 * the descision that was made in budget.c and sched_pfair.c). */
 		hrtimer_start(&state->timer,
 				ns_to_ktime(update),
-				HRTIMER_MODE_ABS_PINNED);
+				HRTIMER_MODE_ABS_PINNED_HARD);
 	}
 
 	if (update < litmus_clock()) {
@@ -835,7 +835,7 @@ static long mc2_activate_plugin(void)
 		sup_for_each_env(env, state->sup_envs)
 			sup_init(env);
 		// Setup the budget/quanta timer
-		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED_HARD);
 		state->timer.function = on_scheduling_timer;
 	}
 
