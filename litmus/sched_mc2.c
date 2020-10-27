@@ -196,28 +196,21 @@ static long mc2_complete_job(void)
 }
 
 /* mc2_dispatch - Select the next Level-A or -B task to schedule.
- * Origin: Namhoon + Joshua
+ * Origin: Joshua
  */
 struct task_struct* mc2_dispatch(struct mc2_cpu_state* state)
 {
-	struct reservation *res, *next;
 	struct task_struct *tsk = NULL;
 	struct sup_reservation_environment *env;
-	lt_t time_slice;
 
 	// sup_envs is sorted by level (Level-A, then Level-B)
 	sup_for_each_env(env, state->sup_envs) {
-		// active_reservations is sorted by priority
-		// (deadline in EDF, static priority in RM)
-		list_for_each_entry_safe(res, next, &env->active_reservations, list) {
-			if (res->state == RESERVATION_ACTIVE) {
-				tsk = res->ops->dispatch_client(res, &time_slice);
-				if (likely(tsk)) {
-					sup_scheduler_update_after(env, res->cur_budget);
-					return tsk;
-				}
-			}
-		}
+		// sup_dispatch iterates through active_reservations
+		// which is sorted by priority (deadline in EDF, static
+		// priority in RM) until it finds an active client.
+		tsk = sup_dispatch(env);
+		if (tsk)
+			return tsk;
 	}
 
 	return NULL;
@@ -361,9 +354,9 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 	}
 
 	if (prev && prev != state->scheduled && is_realtime(prev))
-		TRACE_TASK(prev, "descheduled.\n");
+		TRACE_TASK(prev, "descheduled at %llu.\n", litmus_clock());
 	if (state->scheduled)
-		TRACE_TASK(state->scheduled, "scheduled.\n");
+		TRACE_TASK(state->scheduled, "scheduled at %llu.\n", litmus_clock());
 
 	post_schedule(state->scheduled, state->cpu);
 	raw_spin_unlock(&state->lock);
@@ -516,6 +509,10 @@ static long mc2_admit_task(struct task_struct *tsk)
 			config.polling_params.relative_deadline = tsk_rt(tsk)->task_params.relative_deadline;
 
 			err = alloc_polling_reservation(PERIODIC_POLLING, &config, &res);
+			if (err) {
+				printk(KERN_ERR "Unable to implicitly create a reservation\n");
+				goto out;
+			}
 			sup_add_new_reservation(env, res);
 			err = 0;
 		}
@@ -551,7 +548,8 @@ out:
 
 /* mc2_task_new - A new real-time job is arrived. Release the next job
  *                at the next reservation replenish time
- * This is called after the task state has been initialized in mc2_admit_task
+ * This is called after the task state has been initialized in mc2_admit_task,
+ * and is_realtime(tsk).
  */
 static void mc2_task_new(struct task_struct *tsk, int on_runqueue,
 			  int is_running)
@@ -825,7 +823,6 @@ static long mc2_activate_plugin(void)
 		state = cpu_state_for(cpu);
 
 		*this_cpu_ptr(&last_update_time) = now;
-		gedf_env->cpu_entries[cpu].id = cpu;
 		gedf_env->env.ops->resume(&gedf_env->env, cpu);
 
 		raw_spin_lock_init(&state->lock);
@@ -842,7 +839,6 @@ static long mc2_activate_plugin(void)
 		state->timer.function = on_scheduling_timer;
 	}
 
-	gedf_env->num_cpus = num_online_cpus();
 	mc2_setup_domain_proc();
 
 	return 0;
