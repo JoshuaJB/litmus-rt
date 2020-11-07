@@ -98,7 +98,7 @@ static void pres_update_timer_and_unlock(struct pres_cpu_state *state)
 			TRACE("setting scheduler timer for %llu\n", update);
 			hrtimer_start(&state->timer,
 					ns_to_ktime(update),
-					HRTIMER_MODE_ABS_PINNED);
+					HRTIMER_MODE_ABS_PINNED_HARD);
 			if (update < litmus_clock()) {
 				/* uh oh, timer expired while trying to set it */
 				TRACE("timer expired during setting "
@@ -545,7 +545,7 @@ static long pres_activate_plugin(void)
 
 		sup_init(&state->sup_env);
 
-		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+		hrtimer_init(&state->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED_HARD);
 		state->timer.function = on_scheduling_timer;
 	}
 

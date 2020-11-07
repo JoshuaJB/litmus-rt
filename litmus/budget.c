@@ -81,7 +81,7 @@ static void arm_enforcement_timer(struct enforcement_timer* et,
 	if (likely(!is_np(t))) {
 		when_to_fire = litmus_clock() + budget_remaining(t);
 		hrtimer_start(&et->timer, ns_to_ktime(when_to_fire),
-			HRTIMER_MODE_ABS_PINNED);
+			HRTIMER_MODE_ABS_PINNED_HARD);
 		et->armed = 1;
 	}
 }
