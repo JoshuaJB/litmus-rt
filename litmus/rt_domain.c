@@ -248,7 +248,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 #endif
 				hrtimer_start(&rh->timer,
 					ns_to_ktime(rh->release_time),
-					HRTIMER_MODE_ABS_PINNED);
+					HRTIMER_MODE_ABS_PINNED_HARD);
 #ifdef CONFIG_RELEASE_MASTER
 			else
 				hrtimer_start_on(
@@ -257,7 +257,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 					 target_cpu : rt->release_master),
 					&rh->info, &rh->timer,
 					ns_to_ktime(rh->release_time),
-					HRTIMER_MODE_ABS_PINNED);
+					HRTIMER_MODE_ABS_PINNED_HARD);
 #endif
 		} else
 			VTRACE_TASK(t, "0x%p is not my timer\n", &rh->timer);

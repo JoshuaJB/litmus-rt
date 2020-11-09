@@ -1212,7 +1212,7 @@ static int __init init_pfair(void)
 	/* initialize CPU state */
 	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
 		state = &per_cpu(pfair_state, cpu);
-		hrtimer_init(&state->quantum_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+		hrtimer_init(&state->quantum_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED_HARD);
 		state->quantum_timer.function = on_quantum_boundary;
 		state->topology.id = cpu;
 		state->cur_tick   = 0;
