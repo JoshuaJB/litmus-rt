@@ -479,17 +479,17 @@ static struct task_struct* gsnedf_schedule(struct task_struct * prev)
 	 */
 	if (!np && (out_of_time || sleep)) {
 		if(sleep && get_forced_completion(entry->scheduled)) {
-			/* if we have a forced completion just before, simply 
+			/* if we have a forced completion just before, simply
 			 * set the completed flag to 0
 			 */
-			TRACE_TASK(entry->scheduled,  
+			TRACE_TASK(entry->scheduled,
 				   "Task should complete normally, "
 				   "but skipped due to a previous forced completion "
 				   "caused by budget overrun\n");
 			/* used current as in curr_job_completion */
-			tsk_rt(current)->completed = 0;			
+			tsk_rt(current)->completed = 0;
 		} else {
-			/* if we have a forced completion now or a normal 
+			/* if we have a forced completion now or a normal
 			 * completion without previous forced completion,
 			 * simply call curr_job_completion
 			 */
