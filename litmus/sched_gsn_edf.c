@@ -125,6 +125,9 @@ static struct bheap      gsnedf_cpu_heap;
 static rt_domain_t gsnedf;
 #define gsnedf_lock (gsnedf.ready_lock)
 
+/* use the untouched rt_params->plugin_state as the forced completion bit */
+#define get_forced_completion(t) t->rt_param.plugin_state
+#define set_forced_completion(t, forced) t->rt_param.plugin_state = forced
 
 /* Uncomment this if you want to see all scheduling decisions in the
  * TRACE() log.
@@ -474,8 +477,27 @@ static struct task_struct* gsnedf_schedule(struct task_struct * prev)
 	 * this. Don't do a job completion if we block (can't have timers running
 	 * for blocked jobs).
 	 */
-	if (!np && (out_of_time || sleep))
-		curr_job_completion(!sleep);
+	if (!np && (out_of_time || sleep)) {
+		if(sleep && get_forced_completion(entry->scheduled)) {
+			/* if we have a forced completion just before, simply
+			 * set the completed flag to 0
+			 */
+			TRACE_TASK(entry->scheduled,
+				   "Task should complete normally, "
+				   "but skipped due to a previous forced completion "
+				   "caused by budget overrun\n");
+			/* used current as in curr_job_completion */
+			tsk_rt(current)->completed = 0;
+		} else {
+			/* if we have a forced completion now or a normal
+			 * completion without previous forced completion,
+			 * simply call curr_job_completion
+			 */
+			curr_job_completion(!sleep);
+		}
+		/* record whether there is a forced completion */
+		set_forced_completion(entry->scheduled, out_of_time);
+	}
 
 	/* Link pending task if we became unlinked.
 	 */
