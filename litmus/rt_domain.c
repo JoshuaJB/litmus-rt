@@ -92,7 +92,7 @@ struct release_heap* release_heap_alloc(int gfp_flags)
 	rh= kmem_cache_alloc(release_heap_cache, gfp_flags);
 	if (rh) {
 		/* initialize timer */
-		hrtimer_init(&rh->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+		hrtimer_init(&rh->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_HARD);
 		rh->timer.function = on_release_timer;
 	}
 	return rh;

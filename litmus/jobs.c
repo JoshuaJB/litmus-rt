@@ -147,7 +147,7 @@ static long sleep_until_next_release(void)
 		set_current_state(TASK_INTERRUPTIBLE);
 		tsk_rt(t)->completed = 1;
 		preempt_enable_no_resched();
-		err = schedule_hrtimeout(&next_release, HRTIMER_MODE_ABS);
+		err = schedule_hrtimeout(&next_release, HRTIMER_MODE_ABS_HARD);
 		/* If we get woken by a signal, we return early.
 		 * This is intentional; we want to be able to kill tasks
 		 * that are waiting for the next job release.

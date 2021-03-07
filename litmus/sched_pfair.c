@@ -739,7 +739,7 @@ out:
 			hrtimer_get_expires(&state->quantum_timer));
 		hrtimer_start(&state->quantum_timer,
 			hrtimer_get_expires(&state->quantum_timer),
-			HRTIMER_MODE_ABS);
+			HRTIMER_MODE_ABS_HARD);
 	}
 
 	return next;

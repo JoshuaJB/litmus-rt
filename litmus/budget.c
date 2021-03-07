@@ -110,7 +110,7 @@ static int __init init_budget_enforcement(void)
 
 	for (cpu = 0; cpu < NR_CPUS; cpu++)  {
 		et = &per_cpu(budget_timer, cpu);
-		hrtimer_init(&et->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+		hrtimer_init(&et->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_HARD);
 		et->timer.function = on_enforcement_timeout;
 	}
 	return 0;
