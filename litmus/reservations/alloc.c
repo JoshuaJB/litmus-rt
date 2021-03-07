@@ -8,7 +8,7 @@
 #include <litmus/reservations/polling.h>
 #include <litmus/reservations/table-driven.h>
 
-
+// Supports disabling budget enforcement if budget is ULONG_MAX
 long alloc_polling_reservation(
 	int res_type,
 	struct reservation_config *config,
@@ -19,14 +19,16 @@ long alloc_polling_reservation(
 	int periodic =  res_type == PERIODIC_POLLING;
 
 	if (config->polling_params.budget >
-	    config->polling_params.period) {
+	    config->polling_params.period
+	    && config->polling_params.budget != ULONG_MAX) {
 		printk(KERN_ERR "invalid polling reservation (%u): "
 		       "budget > period\n", config->id);
 		return -EINVAL;
 	}
 	if (config->polling_params.budget >
 	    config->polling_params.relative_deadline
-	    && config->polling_params.relative_deadline) {
+	    && config->polling_params.relative_deadline
+	    && config->polling_params.budget != ULONG_MAX) {
 		printk(KERN_ERR "invalid polling reservation (%u): "
 		       "budget > deadline\n", config->id);
 		return -EINVAL;

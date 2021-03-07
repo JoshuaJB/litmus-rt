@@ -100,7 +100,11 @@ void sup_scheduler_update_after(
 	struct sup_reservation_environment* sup_env,
 	lt_t timeout)
 {
-	sup_scheduler_update_at(sup_env, sup_env->env.current_time + timeout);
+	// Check for integer overflow
+	if (sup_env->env.current_time + timeout > sup_env->env.current_time)
+		sup_scheduler_update_at(sup_env, sup_env->env.current_time + timeout);
+	else
+		sup_scheduler_update_at(sup_env, ULLONG_MAX);
 }
 
 static int _sup_queue_depleted(

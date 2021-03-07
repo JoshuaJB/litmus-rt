@@ -222,6 +222,7 @@ static struct reservation_ops sporadic_polling_ops_edf = {
 	.drain_budget = common_drain_budget,
 };
 
+// Supports disabling budget enforcement by passing ULONG_MAX as budget
 void polling_reservation_init(
 	struct polling_reservation *pres,
 	int use_edf_prio,
@@ -231,8 +232,8 @@ void polling_reservation_init(
 {
 	if (!deadline)
 		deadline = period;
-	BUG_ON(budget > period);
-	BUG_ON(budget > deadline);
+	BUG_ON(budget > period && budget != ULONG_MAX);
+	BUG_ON(budget > deadline && budget != ULONG_MAX);
 	BUG_ON(offset >= period);
 
 	reservation_init(&pres->res);
