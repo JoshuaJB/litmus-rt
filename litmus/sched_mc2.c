@@ -104,9 +104,10 @@ static task_class_t get_task_crit_level(struct task_struct *tsk)
  *               Called by blocks() and task_exit().
  *
  * @job_complete	indicate whether job completes or not
+ * @request_free	If the task should be freed (ext_res only)
  * Origin: P-RES
  */
-static void task_departs(struct task_struct *tsk, int job_complete)
+static void task_departs(struct task_struct *tsk, int job_complete, int request_free)
 {
 	struct mc2_task_state* tinfo = get_mc2_state(tsk);
 
@@ -130,7 +131,7 @@ static void task_departs(struct task_struct *tsk, int job_complete)
 		TRACE_TASK(tsk, "client_departs: removed from reservation R%d with budget %llu\n", res->id, res->cur_budget);
 	} else {
 		struct ext_reservation* res = tinfo->ext_res;
-		res->par_env->ops->remove_res(res->par_env, res, job_complete, 0);
+		res->par_env->ops->remove_res(res->par_env, res, request_free, 0);
 	}
 
 	// We reschedule to choose a new task
@@ -385,7 +386,7 @@ static void mc2_task_block(struct task_struct *tsk)
 		litmus_clock(), tsk->state, is_current_running());
 
 	// Dequeue and reschedule
-	task_departs(tsk, is_completed(tsk));
+	task_departs(tsk, is_completed(tsk), 0);
 	raw_spin_unlock_irqrestore(&state->lock, flags);
 }
 
@@ -656,7 +657,7 @@ static void mc2_task_exit(struct task_struct *tsk)
 
 	/* remove from queues and reschedule */
 	if (tsk->state == TASK_RUNNING) 
-		task_departs(tsk, 0);
+		task_departs(tsk, 0, 1);
 
 	// Cleanup any automatically created reservations
 	if (tinfo->cpu != -1) {
@@ -664,8 +665,6 @@ static void mc2_task_exit(struct task_struct *tsk)
 		// Automatically created reservations use the task's PID
 		if (tsk->pid == res->id)
 			destroy_reservation(res);
-	} else {
-		tinfo->ext_res->ops->shutdown(tinfo->ext_res);
 	}
 
 	raw_spin_unlock_irqrestore(&state->lock, flags);
