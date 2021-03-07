@@ -602,6 +602,8 @@ static void gedf_env_resume(
 		domain_resume_releases(&gedf_env->domain);
 }
 
+/* DANGER! This function may return a time_slice very close to ULLONG_MAX,
+ * so don't add to time_slice without checking for overflow first. */
 static struct task_struct* gedf_env_dispatch(
 	struct ext_reservation_environment* env,
 	lt_t* time_slice,
@@ -622,6 +624,23 @@ static struct task_struct* gedf_env_dispatch(
 		np = entry->scheduled->res.ops->is_np(&entry->scheduled->res, cpu);
 
 	raw_spin_lock_irqsave(&gedf_env->domain.ready_lock, flags);
+	/* Budget replenishment has to happen under a lock, otherwise
+	 * check_for_preemptions() may be called concurrently, and try to link and
+	 * schedule our now-out-of-budget task on another CPU. This would result in
+	 * both CPUs fighting over who gets to remove it.
+	 * We do budget replenishment here, rather than in update_time() to reduce
+	 * lock contention and because it might have been causing a race condition.
+	 */
+	if (entry->scheduled && !entry->scheduled->res.cur_budget) {
+		entry->scheduled->res.ops->replenish_budget(&entry->scheduled->res, cpu);
+		/* unlink and requeue if not blocked and not np*/
+		if (!entry->scheduled->blocked &&
+				!entry->scheduled->res.ops->is_np(&entry->scheduled->res, cpu)) {
+			unlink(gedf_env, entry->scheduled);
+			requeue(gedf_env, entry->scheduled);
+			check_for_preemptions(gedf_env);
+		}
+	}
 
 	BUG_ON(!bheap_node_in_heap(entry->hn));
 	BUG_ON(bheap_empty(&gedf_env->cpu_heap));
@@ -691,31 +710,6 @@ static void gedf_env_update_time(
 		entry->scheduled->res.ops->shutdown(&entry->scheduled->res);
 		entry->scheduled = NULL;
 	}
-
-	/* We need to lock this whole section due to how budget draining works.
-	 * check_for_preemption can be called before budget is properly updated, which,
-	 * through multiple parallel calls to check_for_preemption may end up linking
-	 * a task that's out of budget(but not when it is ran through check_for_preemption) to
-	 * a core other than this one.
-	 * That core can then experience multiple reschedule calls due to the multiple calls to
-	 * check_for_preemption, which will make the linked out of budget task into scheduled.
-	 * Now we have an interesting dilemma. This core and the other core both sees that its
-	 * scheduling the same out of budget task. So we need a way to break symmetry and let
-	 * one core do nothing. By checking for !cur_budget and replenishing budget under a lock,
-	 * we can achieve this.
-	 */
-	raw_spin_lock_irqsave(&gedf_env->domain.ready_lock, flags);
-	if (entry->scheduled && !entry->scheduled->res.cur_budget) {
-		entry->scheduled->res.ops->replenish_budget(&entry->scheduled->res, cpu);
-		/* unlink and requeue if not blocked and not np*/
-		if (!entry->scheduled->blocked &&
-				!entry->scheduled->res.ops->is_np(&entry->scheduled->res, cpu)) {
-			unlink(gedf_env, entry->scheduled);
-			requeue(gedf_env, entry->scheduled);
-			check_for_preemptions(gedf_env);
-		}
-	}
-	raw_spin_unlock_irqrestore(&gedf_env->domain.ready_lock, flags);
 }
 
 /* callback for how the domain will release jobs */

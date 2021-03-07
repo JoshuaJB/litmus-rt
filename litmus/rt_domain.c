@@ -70,9 +70,9 @@ void release_jobs_before_now(rt_domain_t* rt)
 	/* remove all heaps with release time earlier than now
 	 * from the release queue and call release callback
 	 */
+	raw_spin_lock_irqsave(&rt->release_lock, flags);
 	while(!binheap_empty(&rt->release_queue.queue) &&
 			lt_before_eq(rt->release_queue.earliest_release, litmus_clock())) {
-		raw_spin_lock_irqsave(&rt->release_lock, flags);
 		VTRACE("CB has the release_lock 0x%p\n", &rt->release_lock);
 
 		/* O(1) operation */
@@ -97,7 +97,9 @@ void release_jobs_before_now(rt_domain_t* rt)
 		rt->release_jobs(rt, &rh->heap);
 
 		TS_RELEASE_END;
+		raw_spin_lock_irqsave(&rt->release_lock, flags);
 	}
+	raw_spin_unlock_irqrestore(&rt->release_lock, flags);
 }
 
 static enum hrtimer_restart on_release_timer(struct hrtimer *timer)
@@ -130,7 +132,7 @@ void domain_resume_releases(rt_domain_t* rt)
 	if (rt->release_queue.earliest_release != NO_FUTURE_RELEASE) {
 		hrtimer_start(&rt->timer,
 			ns_to_ktime(rt->release_queue.earliest_release),
-			HRTIMER_MODE_ABS_PINNED);
+			HRTIMER_MODE_ABS_PINNED_HARD);
 	}
 }
 
@@ -317,7 +319,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 #endif
 				hrtimer_start(&rt->timer,
 					ns_to_ktime(rh->release_time),
-					HRTIMER_MODE_ABS_PINNED);
+					HRTIMER_MODE_ABS_PINNED_HARD);
 #ifdef CONFIG_RELEASE_MASTER
 			else
 				hrtimer_start_on(
@@ -326,10 +328,10 @@ static void arm_release_timer(rt_domain_t *_rt)
 					 target_cpu : rt->release_master),
 					&rt->info, &rt->timer,
 					ns_to_ktime(rh->release_time),
-					HRTIMER_MODE_ABS_PINNED);
+					HRTIMER_MODE_ABS_PINNED_HARD);
 #endif
 		} else
-			VTRACE("timer 0x%p has been armed for earlier time\n", &rh->timer);
+			VTRACE("timer 0x%p has been armed for earlier time\n", &rt->timer);
 	}
 }
 
@@ -427,7 +429,7 @@ static void arm_release_timer_res(rt_domain_t *_rt, int interrupt_release)
 					HRTIMER_MODE_ABS_PINNED_HARD);
 #endif
 		} else
-			VTRACE("timer 0x%p has been armed for earlier time\n", &rh->timer);
+			VTRACE("timer 0x%p has been armed for earlier time\n", &rt->timer);
 	}
 }
 
@@ -462,7 +464,7 @@ void rt_domain_init(rt_domain_t *rt,
 	raw_spin_lock_init(&rt->release_lock);
 	raw_spin_lock_init(&rt->tobe_lock);
 
-	hrtimer_init(&rt->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	hrtimer_init(&rt->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_HARD);
 	rt->timer.function = on_release_timer;
 
 	rt->check_resched 	= check;
