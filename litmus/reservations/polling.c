@@ -21,8 +21,10 @@ static void periodic_polling_client_arrives(
 			/* Figure out next replenishment time. */
 			tmp = res->env->current_time - res->env->time_zero;
 			instances =  div64_u64(tmp, pres->period);
+			// XXX: Changed "(instances + 1)" to "(instances)" for MC^2 purposes
+			// This forces us to resume immediately rather than at the next period boundary
 			res->next_replenishment =
-				(instances + 1) * pres->period + pres->offset;
+				(instances) * pres->period + pres->offset;
 
 			TRACE("pol-res: activate tmp=%llu instances=%llu period=%llu nextrp=%llu cur=%llu\n",
 				tmp, instances, pres->period, res->next_replenishment,
