@@ -178,7 +178,7 @@ static void sup_queue_active(
 	int passed_active = _sup_queue_active(sup_env, res);
 
 	/* check for possible preemption */
-	if (res->state == RESERVATION_ACTIVE && !passed_active)
+	if (res->state == RESERVATION_ACTIVE && !passed_active && !sup_env->will_schedule)
 		sup_env->next_scheduler_update = SUP_RESCHEDULE_NOW;
 	else if (res == list_first_entry(&sup_env->active_reservations,
 	                                 struct reservation, list)) {

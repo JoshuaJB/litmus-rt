@@ -41,7 +41,7 @@ long alloc_polling_reservation(
 	}
 
 	/* XXX: would be nice to use a core-local allocation. */
-	pres = kzalloc(sizeof(*pres), GFP_KERNEL);
+	pres = kzalloc(sizeof(*pres), GFP_ATOMIC);
 	if (!pres)
 		return -ENOMEM;
 
