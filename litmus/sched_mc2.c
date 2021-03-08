@@ -112,6 +112,10 @@ static void task_departs(struct task_struct *tsk, int job_complete, int request_
 	struct mc2_task_state* tinfo = get_mc2_state(tsk);
 
 	BUG_ON(!is_realtime(tsk));
+	// If we already removed the task, this function should be a no-op
+	if (tinfo->has_departed)
+		goto out;
+
 	tinfo->has_departed = true;
 
 	if (get_task_crit_level(tsk) < CRIT_LEVEL_C) {
@@ -140,6 +144,7 @@ static void task_departs(struct task_struct *tsk, int job_complete, int request_
 	else
 		litmus_reschedule_local();
 
+out:
 	if (job_complete)
 		sched_trace_task_completion(tsk, 0);
 }
@@ -273,6 +278,10 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 
 	pre_schedule(prev, state->cpu);
 
+	// Moved from finish_switch(), but state->scheduled is no longer needed
+	// TODO: Refactor-out state->scheduled
+	state->scheduled = prev && is_realtime(prev) ? prev : NULL;
+	// Whenever scheduled and prev are set, they must be equal
 	BUG_ON(prev && state->scheduled && state->scheduled != prev);
 	BUG_ON(prev && state->scheduled && !is_realtime(prev));
 
@@ -303,7 +312,8 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 		gedf_env->env.ops->update_time(&gedf_env->env, now - *this_cpu_ptr(&last_update_time), cpu);
 		*this_cpu_ptr(&last_update_time) = now;
 		state->scheduled = gedf_env->env.ops->dispatch(&gedf_env->env, &global_next_scheduler_update, cpu);
-		if (global_next_scheduler_update != ULLONG_MAX)
+		// Make sure we don't overflow global_next_scheduler_update
+		if (global_next_scheduler_update + now > now)
 			global_next_scheduler_update += now;
 	} else {
 		gedf_env->env.ops->suspend(&gedf_env->env, cpu);
@@ -317,6 +327,11 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 		env->will_schedule = false;
 		update = min(update, env->next_scheduler_update);
 	}
+
+	// hrtimers use ktime (an s64) so check that we won't overflow when casting
+	if ((ktime_t)update < 0)
+		update = SUP_NO_SCHEDULER_UPDATE;
+
 	if (update == SUP_NO_SCHEDULER_UPDATE) {
 		if (hrtimer_active(&state->timer)) {
 			TRACE("canceling timer...at %llu\n",
@@ -494,6 +509,7 @@ static long mc2_admit_task(struct task_struct *tsk)
 				printk(KERN_ERR "requested CPU %d does"
 				       " not exist\n", task_params->cpu);
 				err = -EINVAL;
+				raw_spin_unlock_irqrestore(&state->lock, flags);
 				goto out;
 			}
 			config.id = tsk->pid;
@@ -503,7 +519,7 @@ static long mc2_admit_task(struct task_struct *tsk)
 			config.polling_params.period = tsk_rt(tsk)->task_params.period;
 			// Try to respect the budget management setting on the task
 			if (tsk_rt(tsk)->task_params.budget_policy == NO_ENFORCEMENT)
-				config.polling_params.budget = tsk_rt(tsk)->task_params.period;
+				config.polling_params.budget = ULONG_MAX;
 			else
 				config.polling_params.budget = tsk_rt(tsk)->task_params.exec_cost;
 			config.polling_params.offset = tsk_rt(tsk)->task_params.phase;
@@ -512,6 +528,7 @@ static long mc2_admit_task(struct task_struct *tsk)
 			err = alloc_polling_reservation(PERIODIC_POLLING, &config, &res);
 			if (err) {
 				printk(KERN_ERR "Unable to implicitly create a reservation\n");
+				raw_spin_unlock_irqrestore(&state->lock, flags);
 				goto out;
 			}
 			sup_add_new_reservation(env, res);
@@ -843,15 +860,6 @@ static long mc2_activate_plugin(void)
 	return 0;
 }
 
-/* mc2_finish_switch: Clear scheduled when a non-rt task runs
- * Origin: Namhoon
- */
-static void mc2_finish_switch(struct task_struct *prev)
-{
-	struct mc2_cpu_state *state = local_cpu_state();
-	state->scheduled = is_realtime(current) ? current : NULL;
-}
-
 /* mc2_deactivate_plugin: Reset/clear/flush state
  * Origin: P-RES
  */
@@ -886,7 +894,6 @@ static long mc2_deactivate_plugin(void)
 static struct sched_plugin mc2_plugin = {
 	.plugin_name		= "MC2",
 	.schedule		= mc2_schedule,
-	.finish_switch		= mc2_finish_switch,
 	.task_wake_up		= mc2_task_resume,
 	.task_block			= mc2_task_block,
 	.admit_task		= mc2_admit_task,
