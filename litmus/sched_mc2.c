@@ -306,8 +306,11 @@ static struct task_struct* mc2_schedule(struct task_struct * prev)
 
 	// If core-local reservations have nothing to run, ask the global reservation
 	// Note that gedf_env handles non-preemptivity internally
-	// XXX: Weird cpu comparisons are to prevent migrations to CCX not part of the case study
-	if (!state->scheduled && (cpu < 8 || (cpu >= 16 && cpu < 24))) {
+	// XXX: The masking of CPUs on the 2nd half of this conditional prevents case
+	//      study tasks from migrating outside of the 8 cores and 8 threads that
+	//      were considered during provisioning.
+	int num_cores = num_present_cpus() / 2;
+	if (!state->scheduled && (cpu < 8 || (cpu >= num_cores && cpu < num_cores+8))) {
 		// We only update the gedf_env once all higher criticality work is done
 		gedf_env->env.ops->resume(&gedf_env->env, cpu);
 		gedf_env->env.ops->update_time(&gedf_env->env, now - *this_cpu_ptr(&last_update_time), cpu);
