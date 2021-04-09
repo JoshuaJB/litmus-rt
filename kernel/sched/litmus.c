@@ -150,7 +150,7 @@ litmus_schedule(struct rq *rq, struct task_struct *prev)
 		double_rq_lock(rq, other_rq);
 		if (other_rq == task_rq(next) &&
 		    next->rt_param.stack_in_use == NO_CPU) {
-		    	/* ok, we can grab it */
+			/* ok, we can grab it */
 			set_task_cpu(next, rq->cpu);
 			/* release the other CPU's runqueue, but keep ours */
 			raw_spin_unlock(&other_rq->lock);
@@ -264,6 +264,7 @@ static void put_prev_task_litmus(struct rq *rq, struct task_struct *p)
 
 /* pick_next_task_litmus() - litmus_schedule() function
  *
+ * @param prev Unused, as this is deprecated in our caller.
  * return the next task to be scheduled
  */
 static struct task_struct *pick_next_task_litmus(struct rq *rq,
@@ -325,13 +326,12 @@ static void set_next_task_litmus(struct rq *rq, struct task_struct *p)
 
 
 #ifdef CONFIG_SMP
-/* Basic no-op balance function
- */
-static int 
+static int
 balance_litmus(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 {
 	return 1;
 }
+
 /* execve tries to rebalance task in this scheduling domain.
  * We don't care about the scheduling domain; can gets called from
  * exec, fork, wakeup.
@@ -373,7 +373,7 @@ const struct sched_class litmus_sched_class = {
 	.put_prev_task		= put_prev_task_litmus,
 
 #ifdef CONFIG_SMP
-	.balance 		= balance_litmus,
+	.balance		= balance_litmus,
 	.select_task_rq		= select_task_rq_litmus,
 #endif
 
