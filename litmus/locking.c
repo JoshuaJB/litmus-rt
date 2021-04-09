@@ -151,7 +151,7 @@ unsigned int __add_wait_queue_prio_exclusive(
 	/* find a spot where the new entry is less than the next */
 	list_for_each(pos, &head->head) {
 		prio_wait_queue_t* queued = list_entry(pos, prio_wait_queue_t,
-			wq.entry);
+						       wq.entry);
 
 		if (unlikely(lt_before(new->priority, queued->priority) ||
 			     (new->priority == queued->priority &&

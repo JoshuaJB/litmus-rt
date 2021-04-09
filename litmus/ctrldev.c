@@ -141,7 +141,7 @@ static long litmus_ctrl_ioctl(struct file *filp,
 
 	/* LITMUS^RT syscall emulation: we expose LITMUS^RT-specific operations
 	 * via ioctl() to avoid merge conflicts with the syscall tables when
-	 * rebasing LITMUS^RT. Whi this is not the most elegant way to expose
+	 * rebasing LITMUS^RT. While this is not the most elegant way to expose
 	 * syscall-like functionality, it helps with reducing the effort
 	 * required to maintain LITMUS^RT out of tree.
 	 */
@@ -184,9 +184,10 @@ static long litmus_ctrl_ioctl(struct file *filp,
 				syscall_args.od_open.obj_type,
 				syscall_args.od_open.obj_id,
 				syscall_args.od_open.config);
+		default:
+			printk(KERN_DEBUG "ctrldev: strange od_open cmd: %d\n", cmd);
+			return -EINVAL;
 		}
-		printk(KERN_DEBUG "Weird litmus od_open cmd: %d\n", cmd);
-		return -EINVAL;
 
 
 	case LRT_null_call:

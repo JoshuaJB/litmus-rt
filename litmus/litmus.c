@@ -636,8 +636,6 @@ int litmus_be_migrate_to(int cpu)
 }
 
 #ifdef CONFIG_MAGIC_SYSRQ
-int send_sig(int sig, struct task_struct *p, int priv);
-
 static void sysrq_handle_kill_rt_tasks(int key)
 {
 	struct task_struct *t;

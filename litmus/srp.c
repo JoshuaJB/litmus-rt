@@ -276,10 +276,10 @@ static int srp_wake_up(wait_queue_entry_t *wait, unsigned mode, int sync,
 
 static void do_ceiling_block(struct task_struct *tsk)
 {
-	struct wait_queue_entry wait = {
-		.private   = tsk,
-		.func      = srp_wake_up,
-		.entry = {NULL, NULL}
+	wait_queue_entry_t wait = {
+		.private = tsk,
+		.func    = srp_wake_up,
+		.entry   = {NULL, NULL}
 	};
 
 	tsk->state = TASK_UNINTERRUPTIBLE;

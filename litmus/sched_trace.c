@@ -10,9 +10,8 @@
 #include <asm/uaccess.h>
 #include <linux/module.h>
 #include <linux/sysrq.h>
-#include <linux/sched.h>
-#include <linux/kfifo.h>
 #include <linux/sched/signal.h>
+#include <linux/kfifo.h>
 
 atomic_t __log_seq_no = ATOMIC_INIT(0);
 
