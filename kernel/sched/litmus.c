@@ -50,14 +50,9 @@ litmus_schedule(struct rq *rq, struct task_struct *prev)
 
 	sched_state_plugin_check();
 
-	if (!next) {
-		update_enforcement_timer(next);
-		return next;
-	}
-
 #ifdef CONFIG_SMP
 	/* check if a global plugin pulled a task from a different RQ */
-	if (task_rq(next) != rq) {
+	if (next && task_rq(next) != rq) {
 		/* we need to migrate the task */
 		other_rq = task_rq(next);
 		from_where = other_rq->cpu;
@@ -173,7 +168,7 @@ litmus_schedule(struct rq *rq, struct task_struct *prev)
 #endif
 
 	/* check if the task became invalid while we dropped the lock */
-	if (!is_realtime(next) || !tsk_rt(next)->present) {
+	if (next && (!is_realtime(next) || !tsk_rt(next)->present)) {
 		TRACE_TASK(next,
 			"BAD: next (no longer?) valid\n");
 		litmus->next_became_invalid(next);
@@ -181,13 +176,15 @@ litmus_schedule(struct rq *rq, struct task_struct *prev)
 		next = NULL;
 	}
 
+	if (next) {
 #ifdef CONFIG_SMP
-	next->rt_param.stack_in_use = rq->cpu;
+		next->rt_param.stack_in_use = rq->cpu;
 #else
-	next->rt_param.stack_in_use = 0;
+		next->rt_param.stack_in_use = 0;
 #endif
-	update_rq_clock(rq);
-	next->se.exec_start = rq->clock;
+		update_rq_clock(rq);
+		next->se.exec_start = rq->clock;
+	}
 
 out:
 	update_enforcement_timer(next);
@@ -264,27 +261,24 @@ static void put_prev_task_litmus(struct rq *rq, struct task_struct *p)
 
 /* pick_next_task_litmus() - litmus_schedule() function
  *
- * @param prev Unused, as this is deprecated in our caller.
- * return the next task to be scheduled
+ * prev and rf are deprecated by our caller and unused
+ * returns the next task to be scheduled
  */
 static struct task_struct *pick_next_task_litmus(struct rq *rq,
 	struct task_struct *prev, struct rq_flags *rf)
 {
 	struct task_struct *next;
-	// I don't know if this is correct, but rf may be NULL according to
-	// sched.h, so I'm hoping NIL_COOKIE is safe to use in that case.
-	struct pin_cookie cookie = NIL_COOKIE;
-	if (rf) {
-		cookie = rf->cookie;
-	}
 	if (rq->curr && is_realtime(rq->curr))
 		update_time_litmus(rq, rq->curr);
 
-	lockdep_unpin_lock(&rq->lock, cookie);
+	/* litmus_schedule() should be wrapped by the rq_upin_lock() and
+	 * rq_repin_lock() annotations. Unfortunately, these annotations can
+	 * not presently be added meaningfully as we are not passed rf->cookie.
+	 */
 	TS_PLUGIN_SCHED_START;
 	next = litmus_schedule(rq, rq->curr);
 	TS_PLUGIN_SCHED_END;
-	lockdep_repin_lock(&rq->lock, cookie);
+
 	return next;
 }
 
