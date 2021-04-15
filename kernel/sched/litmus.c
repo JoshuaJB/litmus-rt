@@ -268,6 +268,7 @@ static struct task_struct *pick_next_task_litmus(struct rq *rq,
 	struct task_struct *prev, struct rq_flags *rf)
 {
 	struct task_struct *next;
+	BUG_ON(!rq->curr);
 	if (rq->curr && is_realtime(rq->curr))
 		update_time_litmus(rq, rq->curr);
 

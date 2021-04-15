@@ -415,8 +415,7 @@ int psnedf_fmlp_lock(struct litmus_lock* l)
 		/* FIXME: interruptible would be nice some day */
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
-		wait.flags |= WQ_FLAG_EXCLUSIVE;
-		__add_wait_queue_entry_tail(&sem->wait, &wait);
+		__add_wait_queue_entry_tail_exclusive(&sem->wait, &wait);
 
 		TS_LOCK_SUSPEND;
 

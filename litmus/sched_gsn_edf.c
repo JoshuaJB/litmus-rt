@@ -11,10 +11,9 @@
 #include <linux/spinlock.h>
 #include <linux/percpu.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
-#include <linux/sched/topology.h>
-#include <linux/wait.h>
 #include <linux/sched/signal.h>
+#include <linux/sched/topology.h>
+#include <linux/slab.h>
 
 #include <litmus/debug_trace.h>
 #include <litmus/litmus.h>
@@ -807,8 +806,7 @@ int gsnedf_fmlp_lock(struct litmus_lock* l)
 		/* FIXME: interruptible would be nice some day */
 		set_current_state(TASK_UNINTERRUPTIBLE);
 
-		wait.flags |= WQ_FLAG_EXCLUSIVE;
-		__add_wait_queue_entry_tail(&sem->wait, &wait);
+		__add_wait_queue_entry_tail_exclusive(&sem->wait, &wait);
 
 		/* check if we need to activate priority inheritance */
 		if (edf_higher_prio(t, sem->hp_waiter)) {
